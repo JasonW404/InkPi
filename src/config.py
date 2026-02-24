@@ -60,7 +60,12 @@ class GitHubConfig:
 
 @dataclass(frozen=True)
 class WeatherConfig:
-	"""Weather source configuration."""
+	"""Weather source configuration.
+	
+	Location can be specified as:
+	- Place name (e.g., "上海市青浦区", "Shanghai", "Paris, France")
+	- Coordinates in "latitude,longitude" format (e.g., "31.2304,121.4737")
+	"""
 
 	location: str = ""
 	timezone: str = "UTC"
@@ -114,9 +119,9 @@ class AppConfig:
 				),
 			),
 			github=GitHubConfig(
-				username=os.getenv("EINK_GITHUB_USERNAME", ""),
-				organization=os.getenv("EINK_GITHUB_ORG", ""),
-				api_key=os.getenv("EINK_GITHUB_API_KEY", os.getenv("EINK_GITHUB_TOKEN", "")),
+				username=os.getenv("EINK_GITHUB_USERNAME") or GitHubConfig.username,
+				organization=os.getenv("EINK_GITHUB_ORG") or GitHubConfig.organization,
+				api_key=os.getenv("EINK_GITHUB_API_KEY") or os.getenv("EINK_GITHUB_TOKEN") or GitHubConfig.api_key,
 			),
 			weather=WeatherConfig(
 				location=os.getenv("EINK_WEATHER_LOCATION", ""),
@@ -126,8 +131,7 @@ class AppConfig:
 			),
 			knowledge_card=KnowledgeCardConfig(
 				local_file=os.getenv("EINK_KNOWLEDGE_LOCAL_FILE", "data/cards.json"),
-				remote_enabled=os.getenv("EINK_KNOWLEDGE_REMOTE_ENABLED", "0")
-				in {"1", "true", "True"},
+				remote_enabled=os.getenv("EINK_KNOWLEDGE_REMOTE_ENABLED", "0") in {"1", "true", "True"},
 				remote_url=os.getenv("EINK_KNOWLEDGE_REMOTE_URL", ""),
 			),
 		)

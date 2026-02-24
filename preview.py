@@ -1,78 +1,72 @@
-"""Generate dashboard preview for layout verification."""
+"""Generate dashboard preview with real data sources."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import logging
 from pathlib import Path
 
-from src.domain.models import (
-    DashboardSnapshot,
-    DateTimeInfo,
-    GitHubContributionDay,
-    GitHubMonthlyStats,
-    KnowledgeCard,
-    SystemStatus,
-    WeatherInfo,
-)
+from src.config import AppConfig
+from src.services.dashboard import DashboardDataService
+from src.services.datetime import DateTimeService
+from src.services.github import GitHubService
+from src.services.posts import KnowledgeCardService
+from src.services.system import SystemService
+from src.services.weather import WeatherService
 from src.ui.renderer import DashboardRenderer
 
 
-def create_sample_snapshot() -> DashboardSnapshot:
-    """Create sample dashboard data for preview.
+def main() -> None:
+    """Generate preview image with real data and save to file."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logger = logging.getLogger(__name__)
 
-    Returns:
-        Mock dashboard snapshot with representative data.
-    """
-    now = datetime.now(UTC)
+    print("Loading configuration...")
+    try:
+        config = AppConfig.from_env()
+    except Exception as e:
+        logger.error(f"Failed to load configuration: {e}")
+        logger.info("Hint: Set environment variables like EINK_GITHUB_USERNAME, etc.")
+        raise
 
-    return DashboardSnapshot(
-        generated_at=now,
-        date_time=DateTimeInfo(now=now, timezone="UTC"),
-        weather=WeatherInfo(
-            summary="Partly cloudy",
-            temperature_celsius=18.5,
-            apparent_temperature_celsius=17.2,
-            updated_at=now,
-        ),
-        system=SystemStatus(load_percent=42.3, load_level=2),
-        github=GitHubMonthlyStats(
-            month="2026-02",
-            contributions=[
-                GitHubContributionDay(day=now.date(), commit_count=3),
-                GitHubContributionDay(day=now.date(), commit_count=5),
-                GitHubContributionDay(day=now.date(), commit_count=1),
-                GitHubContributionDay(day=now.date(), commit_count=8),
-                GitHubContributionDay(day=now.date(), commit_count=2),
-                GitHubContributionDay(day=now.date(), commit_count=0),
-                GitHubContributionDay(day=now.date(), commit_count=4),
-            ],
-            organization_repo_count=12,
-            organization_monthly_commit_count=47,
-            organization_additions=1523,
-            organization_deletions=892,
-        ),
-        card=KnowledgeCard(
-            title="Sample Knowledge Card",
-            body="This is a demonstration of the dashboard layout. "
-            "Knowledge cards can display useful information, tips, or quotes. "
-            "The content wraps automatically to fit the panel dimensions.",
-            source="preview-script",
-            updated_at=now,
-        ),
+    print("Initializing data services...")
+    data_service = DashboardDataService(
+        date_time_provider=DateTimeService(config),
+        weather_provider=WeatherService(config),
+        system_provider=SystemService(),
+        github_provider=GitHubService(config),
+        card_provider=KnowledgeCardService(config),
     )
 
+    print("Collecting real data from all sources...")
+    try:
+        snapshot = data_service.collect()
+    except Exception as e:
+        logger.error(f"Failed to collect data: {e}")
+        raise
 
-def main() -> None:
-    """Generate preview image and save to file."""
-    print("Generating dashboard preview...")
-
-    snapshot = create_sample_snapshot()
-    renderer = DashboardRenderer(github_username="sample-user", github_organization="sample-org")
+    print("Rendering dashboard...")
+    renderer = DashboardRenderer(
+        github_username=config.github.username,
+        github_organization=config.github.organization,
+    )
     image = renderer.render(snapshot)
 
     output_path = Path("preview.png")
     image.save(output_path)
-    print(f"Preview saved to: {output_path.absolute()}")
+    
+    print(f"\n✓ Preview saved to: {output_path.absolute()}")
+    print(f"  - DateTime: {snapshot.date_time.now.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    
+    # Weather info (handle None temperature)
+    if snapshot.weather.temperature_celsius is not None:
+        print(f"  - Weather: {snapshot.weather.temperature_celsius:.1f}°C")
+    else:
+        print(f"  - Weather: {snapshot.weather.summary}")
+    
+    print(f"  - System Load: {snapshot.system.load_level}/5 ({snapshot.system.load_percent:.1f}%)")
+    print(f"  - GitHub Contributions: {len(snapshot.github.contributions)} days")
+    print(f"  - GitHub Org Repos: {snapshot.github.organization_repo_count}")
+    print(f"  - Knowledge Card: {snapshot.card.title[:40]}...")
 
 
 if __name__ == "__main__":
