@@ -1,0 +1,117 @@
+"""Knowledge card provider service with local-first and remote-override mode."""
+
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+import requests
+
+from src.config import AppConfig
+from src.domain.models import KnowledgeCard
+
+
+class KnowledgeCardService:
+	"""Load and select knowledge cards for dashboard rendering."""
+
+	def __init__(self, config: AppConfig) -> None:
+		"""Store card source configuration.
+
+		Args:
+			config: Application configuration.
+		"""
+
+		self._local_file = Path(config.knowledge_card.local_file)
+		self._remote_enabled = config.knowledge_card.remote_enabled
+		self._remote_url = config.knowledge_card.remote_url
+		self._timeout_seconds = 8
+
+	def get_current(self) -> KnowledgeCard:
+		"""Return selected card from local-first hybrid sources."""
+
+		local_cards = self._load_local_cards()
+		if local_cards:
+			card = self._pick_today_card(local_cards)
+		else:
+			card = self._fallback("local_unavailable")
+
+		if not self._remote_enabled or not self._remote_url:
+			return card
+
+		remote_cards = self._load_remote_cards()
+		if not remote_cards:
+			return card
+
+		return self._pick_today_card(remote_cards)
+
+	def _load_local_cards(self) -> list[dict[str, str]]:
+		"""Load cards from local JSON file."""
+
+		if not self._local_file.exists():
+			return []
+		try:
+			payload = json.loads(self._local_file.read_text(encoding="utf-8"))
+		except (json.JSONDecodeError, OSError):
+			return []
+		return self._normalize_cards(payload)
+
+	def _load_remote_cards(self) -> list[dict[str, str]]:
+		"""Load cards from remote JSON endpoint."""
+
+		try:
+			response = requests.get(self._remote_url, timeout=self._timeout_seconds)
+			response.raise_for_status()
+			payload = response.json()
+		except requests.RequestException:
+			return []
+		return self._normalize_cards(payload)
+
+	def _pick_today_card(self, cards: list[dict[str, str]]) -> KnowledgeCard:
+		"""Select one card by day-of-year rotation."""
+
+		if not cards:
+			return self._fallback("empty_source")
+		day_of_year = datetime.now(UTC).timetuple().tm_yday
+		selected = cards[day_of_year % len(cards)]
+		return KnowledgeCard(
+			title=selected.get("title", "Untitled"),
+			body=selected.get("body", ""),
+			source=selected.get("source", "knowledge-card"),
+			updated_at=datetime.now(UTC),
+		)
+
+	@staticmethod
+	def _normalize_cards(payload: object) -> list[dict[str, str]]:
+		"""Normalize raw payload into title/body/source dictionaries."""
+
+		if not isinstance(payload, list):
+			return []
+		cards: list[dict[str, str]] = []
+		for item in payload:
+			if not isinstance(item, dict):
+				continue
+			title = str(item.get("title", "")).strip()
+			body = str(item.get("body", "")).strip()
+			if not title and not body:
+				continue
+			cards.append(
+				{
+					"title": title or "Untitled",
+					"body": body,
+					"source": str(item.get("source", "knowledge-card")),
+				}
+			)
+		return cards
+
+	@staticmethod
+	def _fallback(reason: str) -> KnowledgeCard:
+		"""Build fallback knowledge card payload."""
+
+		return KnowledgeCard(
+			title="Knowledge card unavailable",
+			body=f"reason: {reason}",
+			source="fallback",
+			updated_at=datetime.now(UTC),
+		)
+
