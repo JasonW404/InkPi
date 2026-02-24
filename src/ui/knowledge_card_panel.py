@@ -48,27 +48,32 @@ class KnowledgeCardPanel:
         """
         image = Image.new("L", (self._width, self._height), GRAY_WHITE)
 
+        # Right-top knowledge card text: +1 size for readability.
+        title_size = FONT_SIZE_TITLE + 1
+        body_size = FONT_SIZE_NORMAL + 1
+        meta_size = FONT_SIZE_SMALL + 1
+
         y = MARGIN
 
         # Card title.
-        title_lines = self._wrap_text(card.title, max_chars=35)
+        title_lines = self._wrap_text(card.title, max_chars=31)
         for line in title_lines[:2]:  # Max 2 title lines.
-            draw_text(image, (MARGIN, y), line, fill=GRAY_BLACK, font_size=FONT_SIZE_TITLE)
+            draw_text(image, (MARGIN, y), line, fill=GRAY_BLACK, font_size=title_size)
             y += TITLE_LINE_HEIGHT
 
         y += 8
 
         # Card body with wrapping.
-        body_lines = self._wrap_text(card.body, max_chars=50)
+        body_lines = self._wrap_text(card.body, max_chars=44)
         max_body_lines = (self._height - y - MARGIN) // TEXT_LINE_HEIGHT
         for line in body_lines[:max_body_lines]:
-            draw_text(image, (MARGIN, y), line, fill=GRAY_BLACK, font_size=FONT_SIZE_NORMAL)
+            draw_text(image, (MARGIN, y), line, fill=GRAY_BLACK, font_size=body_size)
             y += TEXT_LINE_HEIGHT
 
         # Source label at bottom.
         source_y = self._height - MARGIN - TEXT_LINE_HEIGHT
         source_text = truncate_text(f"Source: {card.source}", 40)
-        draw_text(image, (MARGIN, source_y), source_text, fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
+        draw_text(image, (MARGIN, source_y), source_text, fill=GRAY_MID, font_size=meta_size)
 
         return image
 

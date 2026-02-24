@@ -63,7 +63,14 @@ def main() -> None:
     else:
         print(f"  - Weather: {snapshot.weather.summary}")
     
-    print(f"  - System Load: {snapshot.system.load_level}/5 ({snapshot.system.load_percent:.1f}%)")
+    print(
+        "  - System: "
+        f"CPU peak {snapshot.system.cpu_peak_percent:.1f}% / "
+        f"avg {snapshot.system.cpu_average_percent:.1f}%, "
+        f"Mem {snapshot.system.memory_used_gb:.1f}/{snapshot.system.memory_total_gb:.1f}GB "
+        f"({snapshot.system.memory_percent:.1f}%), "
+        f"Global {snapshot.system.global_load_percent:.1f}%"
+    )
     print(f"  - GitHub Contributions: {len(snapshot.github.contributions)} days")
     print(f"  - GitHub Org Repos: {snapshot.github.organization_repo_count}")
     print(f"  - Knowledge Card: {snapshot.card.title[:40]}...")

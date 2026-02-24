@@ -42,14 +42,24 @@ class GitHubService:
 		now = datetime.now(UTC)
 		month_start = date(year=now.year, month=now.month, day=1)
 		month_label = month_start.strftime("%Y-%m")
+		headers = self._headers()
+		repos = self._fetch_org_repositories(headers) if self._organization else []
 
 		if not self._api_key:
 			self._logger.warning(
 				"github_api_key_missing private_repo_data_will_not_be_included"
 			)
-		daily_commits = self._fetch_user_monthly_commit_days(month_start)
+		else:
+			self._logger.info("github_api_key_present authenticated_requests_enabled")
+		daily_commits = self._fetch_user_monthly_commit_days(
+			month_start=month_start,
+			repos=repos,
+			headers=headers,
+		)
 		repo_count, org_commit_count, additions, deletions = self._fetch_org_monthly_stats(
-			month_start
+			month_start=month_start,
+			repos=repos,
+			headers=headers,
 		)
 
 		return GitHubMonthlyStats(
@@ -64,6 +74,8 @@ class GitHubService:
 	def _fetch_user_monthly_commit_days(
 		self,
 		month_start: date,
+		repos: list[str],
+		headers: dict[str, str],
 	) -> list[GitHubContributionDay]:
 		"""Fetch user push-event commit counts for current month.
 
@@ -77,7 +89,9 @@ class GitHubService:
 		if not self._username:
 			return []
 
-		headers = self._headers()
+		commit_counter: Counter[date] = Counter()
+
+		# Source 1: public events (works without token, but private events can be redacted).
 		try:
 			response = requests.get(
 				f"https://api.github.com/users/{self._username}/events/public",
@@ -87,9 +101,8 @@ class GitHubService:
 			response.raise_for_status()
 			events = response.json()
 		except requests.RequestException:
-			return []
+			events = []
 
-		commit_counter: Counter[date] = Counter()
 		for event in events:
 			if event.get("type") != "PushEvent":
 				continue
@@ -101,14 +114,30 @@ class GitHubService:
 			if event_date < month_start:
 				continue
 			commit_count = len(event.get("payload", {}).get("commits", []))
-			commit_counter[event_date] += commit_count
+			if commit_count > 0:
+				commit_counter[event_date] += commit_count
+
+		# Source 2: organization repo commits by author (captures private repo commits).
+		if self._api_key and repos and self._organization:
+			org_counter = self._fetch_user_org_commit_days(
+				month_start=month_start,
+				repos=repos,
+				headers=headers,
+			)
+			for day, count in org_counter.items():
+				commit_counter[day] += count
 
 		return [
 			GitHubContributionDay(day=day, commit_count=count)
 			for day, count in sorted(commit_counter.items(), key=lambda item: item[0])
 		]
 
-	def _fetch_org_monthly_stats(self, month_start: date) -> tuple[int, int, int, int]:
+	def _fetch_org_monthly_stats(
+		self,
+		month_start: date,
+		repos: list[str] | None = None,
+		headers: dict[str, str] | None = None,
+	) -> tuple[int, int, int, int]:
 		"""Fetch organization repository and commit statistics.
 
 		Args:
@@ -121,9 +150,9 @@ class GitHubService:
 		if not self._organization:
 			return 0, 0, 0, 0
 
-		headers = self._headers()
-		repos = self._fetch_org_repositories(headers)
-		if not repos:
+		request_headers = headers if headers is not None else self._headers()
+		repository_list = repos if repos is not None else self._fetch_org_repositories(request_headers)
+		if not repository_list:
 			return 0, 0, 0, 0
 
 		since = datetime.combine(month_start, datetime.min.time(), tzinfo=UTC).isoformat()
@@ -132,31 +161,148 @@ class GitHubService:
 		total_additions = 0
 		total_deletions = 0
 
-		for repo_name in repos:
-			commits = self._fetch_repo_commits(repo_name, since=since, until=until, headers=headers)
+		for repo_name in repository_list:
+			commits = self._fetch_repo_commits(
+				repo_name,
+				since=since,
+				until=until,
+				headers=request_headers,
+			)
 			total_commits += len(commits)
 			for commit_sha in commits:
 				additions, deletions = self._fetch_commit_stats(
 					repo_name=repo_name,
 					commit_sha=commit_sha,
-					headers=headers,
+					headers=request_headers,
 				)
 				total_additions += additions
 				total_deletions += deletions
 
-		return len(repos), total_commits, total_additions, total_deletions
+		return len(repository_list), total_commits, total_additions, total_deletions
+
+	def _fetch_user_org_commit_days(
+		self,
+		month_start: date,
+		repos: list[str],
+		headers: dict[str, str],
+	) -> Counter[date]:
+		"""Fetch per-day commit counts for configured user across organization repos."""
+
+		since = datetime.combine(month_start, datetime.min.time(), tzinfo=UTC).isoformat()
+		until = datetime.now(UTC).isoformat()
+		counter: Counter[date] = Counter()
+
+		for repo_name in repos:
+			page = 1
+			while True:
+				try:
+					response = requests.get(
+						f"https://api.github.com/repos/{self._organization}/{repo_name}/commits",
+						headers=headers,
+						params={
+							"since": since,
+							"until": until,
+							"author": self._username,
+							"per_page": 100,
+							"page": page,
+						},
+						timeout=self._timeout_seconds,
+					)
+					response.raise_for_status()
+					payload = response.json()
+				except requests.RequestException:
+					break
+
+				if not payload:
+					break
+
+				for item in payload:
+					commit_date_raw = (
+						(item.get("commit") or {}).get("author") or {}
+					).get("date")
+					if not commit_date_raw:
+						continue
+					try:
+						commit_day = datetime.fromisoformat(
+							commit_date_raw.replace("Z", "+00:00")
+						).date()
+					except ValueError:
+						continue
+					if commit_day >= month_start:
+						counter[commit_day] += 1
+
+				page += 1
+
+		return counter
 
 	def _fetch_org_repositories(self, headers: dict[str, str]) -> list[str]:
 		"""Fetch organization repository names with pagination."""
 
 		repository_names: list[str] = []
 		page = 1
+		forbidden = False
 		while True:
 			try:
 				response = requests.get(
 					f"https://api.github.com/orgs/{self._organization}/repos",
 					headers=headers,
-					params={"per_page": 100, "page": page},
+					params={"type": "all", "per_page": 100, "page": page},
+					timeout=self._timeout_seconds,
+				)
+				if response.status_code in {401, 403}:
+					self._logger.warning(
+						"github_org_repo_access_denied status=%s org=%s",
+						response.status_code,
+						self._organization,
+					)
+					forbidden = True
+					break
+				response.raise_for_status()
+				payload = response.json()
+			except requests.RequestException:
+				break
+
+			if not payload:
+				break
+
+			repository_names.extend(
+				repo.get("name", "") for repo in payload if repo.get("name")
+			)
+			page += 1
+
+		if forbidden and headers.get("Authorization"):
+			# Fallback to user-style endpoint when org endpoint is blocked.
+			userstyle_repos = self._fetch_org_repositories_from_user_endpoint(headers)
+			if userstyle_repos:
+				self._logger.info(
+					"github_repo_fallback_used source=user_endpoint count=%s org=%s",
+					len(userstyle_repos),
+					self._organization,
+				)
+				return userstyle_repos
+
+			fallback = self._fetch_accessible_org_repositories(headers)
+			if fallback:
+				self._logger.info(
+					"github_repo_fallback_used source=user_repos count=%s org=%s",
+					len(fallback),
+					self._organization,
+				)
+				return fallback
+
+		return repository_names
+
+	def _fetch_org_repositories_from_user_endpoint(self, headers: dict[str, str]) -> list[str]:
+		"""Fallback: fetch organization repositories using /users/{org}/repos."""
+
+		repository_names: list[str] = []
+		page = 1
+		while True:
+			try:
+				response = requests.get(
+					f"https://api.github.com/users/{self._organization}/repos",
+					headers=headers,
+					params={"type": "all", "per_page": 100, "page": page},
 					timeout=self._timeout_seconds,
 				)
 				response.raise_for_status()
@@ -173,6 +319,50 @@ class GitHubService:
 			page += 1
 
 		return repository_names
+
+	def _fetch_accessible_org_repositories(self, headers: dict[str, str]) -> list[str]:
+		"""Fallback: fetch accessible repos from /user/repos and filter by owner."""
+
+		repository_names: list[str] = []
+		page = 1
+		while True:
+			try:
+				response = requests.get(
+					"https://api.github.com/user/repos",
+					headers=headers,
+					params={
+						"visibility": "all",
+						"affiliation": "owner,organization_member,collaborator",
+						"per_page": 100,
+						"page": page,
+					},
+					timeout=self._timeout_seconds,
+				)
+				response.raise_for_status()
+				payload = response.json()
+			except requests.RequestException:
+				break
+
+			if not payload:
+				break
+
+			for repo in payload:
+				owner = (repo.get("owner") or {}).get("login", "")
+				name = repo.get("name", "")
+				if owner == self._organization and name:
+					repository_names.append(name)
+
+			page += 1
+
+		# Deduplicate while preserving order.
+		seen: set[str] = set()
+		unique: list[str] = []
+		for name in repository_names:
+			if name in seen:
+				continue
+			seen.add(name)
+			unique.append(name)
+		return unique
 
 	def _fetch_repo_commits(
 		self,

@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from enum import Enum
 
 from src.config import AppConfig
+from src.display.adapter import EPDAdapter, RefreshMode as DisplayRefreshMode
+from src.display.dirty_region import DirtyRegionTracker
 from src.services.dashboard import DashboardDataService
 from src.services.datetime import DateTimeService
 from src.services.github import GitHubService
@@ -112,39 +114,97 @@ class DashboardApplication:
             github_username=config.github.username,
             github_organization=config.github.organization,
         )
+        self._display = EPDAdapter(
+            width=config.screen.width,
+            height=config.screen.height,
+        )
+        self._dirty_tracker = DirtyRegionTracker(
+            width=config.screen.width,
+            height=config.screen.height,
+            pixel_threshold=6,
+        )
         self._logger = logging.getLogger(self.__class__.__name__)
 
     def run(self) -> None:
         """Start infinite dashboard runtime loop."""
 
         self._logger.info(
-            "dashboard_started screen=%sx%s partial=%ss full=%ss max_partial=%s",
+            "dashboard_started screen=%sx%s partial=%ss full=%ss max_partial=%s hardware=%s",
             self._config.screen.width,
             self._config.screen.height,
             self._config.refresh.partial_refresh_interval_seconds,
             self._config.refresh.full_refresh_interval_seconds,
             self._config.refresh.max_partial_refreshes_before_full,
+            "available" if self._display.is_hardware_available else "simulated",
         )
 
-        while True:
-            decision = self._policy.decide()
-            snapshot = self._data_service.collect()
-            
-            # Render dashboard image.
-            image = self._renderer.render(snapshot)
-            
-            # TODO: Send image to display adapter for actual screen refresh.
-            # For now, just log rendering success.
-            
-            self._logger.info(
-                "refresh mode=%s reason=%s tz=%s load_level=%s repos=%s commits=%s rendered=%sx%s",
-                decision.mode,
-                decision.reason,
-                snapshot.date_time.timezone,
-                snapshot.system.load_level,
-                snapshot.github.organization_repo_count,
-                snapshot.github.organization_monthly_commit_count,
-                image.width,
-                image.height,
-            )
-            time.sleep(self._policy.sleep_seconds)
+        # Initialize display hardware.
+        use_grayscale = self._config.screen.grayscale_levels == 4
+        if not self._display.initialize(grayscale=use_grayscale):
+            self._logger.error("Failed to initialize display, exiting")
+            return
+
+        try:
+            while True:
+                decision = self._policy.decide()
+                snapshot = self._data_service.collect()
+                
+                # Render dashboard image.
+                image = self._renderer.render(snapshot)
+
+                dirty = self._dirty_tracker.compare(image)
+                dirty_ratio = dirty.changed_ratio
+
+                if decision.mode == RefreshMode.PARTIAL and not dirty.has_changes:
+                    self._logger.info(
+                        "refresh skipped reason=no_visual_change tz=%s",
+                        snapshot.date_time.timezone,
+                    )
+                    time.sleep(self._policy.sleep_seconds)
+                    continue
+                
+                # Map refresh mode to display mode.
+                display_mode = (
+                    DisplayRefreshMode.FULL
+                    if decision.mode == RefreshMode.FULL
+                    else DisplayRefreshMode.PARTIAL
+                )
+
+                if (
+                    decision.mode == RefreshMode.PARTIAL
+                    and dirty.has_changes
+                    and dirty_ratio >= 0.40
+                ):
+                    display_mode = DisplayRefreshMode.FULL
+                
+                # Send to display.
+                display_success = self._display.display(image, mode=display_mode)
+                
+                self._logger.info(
+                    "refresh mode=%s display_mode=%s reason=%s display=%s dirty_ratio=%.3f dirty_bbox=%s tz=%s global=%s cpu_peak=%.1f cpu_avg=%.1f mem=%.1f%% repos=%s commits=%s size=%sx%s",
+                    decision.mode,
+                    display_mode,
+                    decision.reason,
+                    "ok" if display_success else "failed",
+                    dirty_ratio,
+                    dirty.bbox,
+                    snapshot.date_time.timezone,
+                    snapshot.system.load_level,
+                    snapshot.system.cpu_peak_percent,
+                    snapshot.system.cpu_average_percent,
+                    snapshot.system.memory_percent,
+                    snapshot.github.organization_repo_count,
+                    snapshot.github.organization_monthly_commit_count,
+                    image.width,
+                    image.height,
+                )
+                
+                time.sleep(self._policy.sleep_seconds)
+                
+        except KeyboardInterrupt:
+            self._logger.info("Received interrupt signal, shutting down...")
+        except Exception as e:
+            self._logger.error(f"Fatal error in main loop: {e}")
+        finally:
+            self._logger.info("Putting display to sleep...")
+            self._display.sleep()

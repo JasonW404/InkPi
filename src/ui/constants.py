@@ -8,8 +8,8 @@ SCREEN_HEIGHT = 480
 
 # 4-level grayscale palette (0=white, 255=black).
 GRAY_WHITE = 255
-GRAY_LIGHT = 170
-GRAY_MID = 85
+GRAY_LIGHT = 140
+GRAY_MID = 60
 GRAY_BLACK = 0
 
 # Layout margins and spacing.
@@ -22,6 +22,6 @@ TITLE_LINE_HEIGHT = 30
 # Font sizes (logical sizes, actual loading may vary).
 # Increased for 4.26" e-ink display readability.
 FONT_SIZE_SMALL = 16
-FONT_SIZE_NORMAL = 18
-FONT_SIZE_LARGE = 22
-FONT_SIZE_TITLE = 26
+FONT_SIZE_NORMAL = 19
+FONT_SIZE_LARGE = 23
+FONT_SIZE_TITLE = 27

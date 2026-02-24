@@ -48,7 +48,13 @@ class WeatherInfo:
 class SystemStatus:
     """System load snapshot."""
 
-    load_percent: float
+    cpu_average_percent: float
+    cpu_peak_percent: float
+    cpu_per_core_percent: list[float]
+    memory_used_gb: float
+    memory_total_gb: float
+    memory_percent: float
+    global_load_percent: float
     load_level: int
 
 

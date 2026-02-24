@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 def _get_int(name: str, default: int) -> int:
@@ -25,6 +26,30 @@ def _get_int(name: str, default: int) -> int:
 	if value is None:
 		return default
 	return int(value)
+
+
+def _load_dotenv_file(path: str = ".env") -> None:
+	"""Load key-value pairs from .env into process environment.
+
+	Existing environment variables are not overwritten.
+
+	Args:
+		path: Dotenv file path relative to current working directory.
+	"""
+
+	dotenv_path = Path(path)
+	if not dotenv_path.exists():
+		return
+
+	for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
+		line = raw_line.strip()
+		if not line or line.startswith("#") or "=" not in line:
+			continue
+		key, value = line.split("=", maxsplit=1)
+		key = key.strip()
+		value = value.strip().strip('"').strip("'")
+		if key and key not in os.environ:
+			os.environ[key] = value
 
 
 @dataclass(frozen=True)
@@ -99,6 +124,8 @@ class AppConfig:
 		Returns:
 			Fully resolved application configuration.
 		"""
+
+		_load_dotenv_file()
 
 		return cls(
 			screen=ScreenConfig(

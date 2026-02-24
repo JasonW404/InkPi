@@ -5,6 +5,16 @@ description = "Raspberry Pi e-ink dashboard with scheduled partial/full refresh"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-	"Pillow>=10.0.0",
+	"gpiozero>=2.0.1",
+	"lgpio>=0.2.2.0",
+	"pillow>=10.0.0",
 	"requests>=2.32.0",
+	"rpi-gpio>=0.7.1",
+	"spidev>=3.8",
+]
+
+[project.optional-dependencies]
+rpi = [
+	"spidev>=3.6",
+	"gpiozero>=2.0",
 ]
