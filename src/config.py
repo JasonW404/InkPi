@@ -69,6 +69,7 @@ class RefreshConfig:
 	partial_refresh_interval_seconds: int = 60
 	full_refresh_interval_seconds: int = 3600
 	max_partial_refreshes_before_full: int = 30
+	ghosting_mode: str = "balanced"
 
 
 @dataclass(frozen=True)
@@ -127,6 +128,10 @@ class AppConfig:
 
 		_load_dotenv_file()
 
+		ghosting_mode = (os.getenv("EINK_GHOSTING_MODE", "balanced") or "balanced").strip().lower()
+		if ghosting_mode not in {"conservative", "balanced", "aggressive"}:
+			ghosting_mode = "balanced"
+
 		return cls(
 			screen=ScreenConfig(
 				width=_get_int("EINK_SCREEN_WIDTH", 800),
@@ -144,6 +149,7 @@ class AppConfig:
 				max_partial_refreshes_before_full=_get_int(
 					"EINK_MAX_PARTIAL_REFRESHES_BEFORE_FULL", 30
 				),
+				ghosting_mode=ghosting_mode,
 			),
 			github=GitHubConfig(
 				username=os.getenv("EINK_GITHUB_USERNAME") or GitHubConfig.username,

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+import logging
+import time
 
 from src.domain.models import DashboardSnapshot
 from src.services.contracts import (
@@ -40,6 +43,7 @@ class DashboardDataService:
         self._system_provider = system_provider
         self._github_provider = github_provider
         self._card_provider = card_provider
+        self._logger = logging.getLogger(self.__class__.__name__)
 
     def collect(self) -> DashboardSnapshot:
         """Collect a full dashboard snapshot for one cycle.
@@ -48,11 +52,35 @@ class DashboardDataService:
             Aggregated dashboard snapshot.
         """
 
+        started = time.perf_counter()
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            date_time_future = executor.submit(self._date_time_provider.get_current)
+            weather_future = executor.submit(self._weather_provider.get_current)
+            github_future = executor.submit(self._github_provider.get_monthly_stats)
+            card_future = executor.submit(self._card_provider.get_current)
+
+            date_time_info = date_time_future.result()
+            weather_info = weather_future.result()
+            github_info = github_future.result()
+            card_info = card_future.result()
+
+        system_started = time.perf_counter()
+        system_info = self._system_provider.get_current()
+        system_cost_ms = (time.perf_counter() - system_started) * 1000
+
+        total_cost_ms = (time.perf_counter() - started) * 1000
+        self._logger.info(
+            "dashboard_collect_done total=%.1fms system=%.1fms",
+            total_cost_ms,
+            system_cost_ms,
+        )
+
         return DashboardSnapshot(
             generated_at=datetime.now(UTC),
-            date_time=self._date_time_provider.get_current(),
-            weather=self._weather_provider.get_current(),
-            system=self._system_provider.get_current(),
-            github=self._github_provider.get_monthly_stats(),
-            card=self._card_provider.get_current(),
+            date_time=date_time_info,
+            weather=weather_info,
+            system=system_info,
+            github=github_info,
+            card=card_info,
         )

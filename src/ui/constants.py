@@ -13,15 +13,14 @@ GRAY_MID = 60
 GRAY_BLACK = 0
 
 # Layout margins and spacing.
-CANVAS_PADDING = 15
-MARGIN = 15
+CANVAS_PADDING = 10
+MARGIN = 10
 PANEL_SPACING = 8
 TEXT_LINE_HEIGHT = 24
 TITLE_LINE_HEIGHT = 30
 
-# Font sizes (logical sizes, actual loading may vary).
-# Increased for 4.26" e-ink display readability.
+# Font sizes (must be multiples of 4 for crisp e-ink rendering).
 FONT_SIZE_SMALL = 16
-FONT_SIZE_NORMAL = 19
-FONT_SIZE_LARGE = 23
-FONT_SIZE_TITLE = 27
+FONT_SIZE_NORMAL = 20
+FONT_SIZE_LARGE = 24
+FONT_SIZE_TITLE = 28

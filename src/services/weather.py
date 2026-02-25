@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import UTC, datetime
 
 import requests
@@ -28,6 +29,9 @@ class WeatherService:
 		
 		# Cache geocoded coordinates to avoid repeated API calls.
 		self._cached_coordinates: tuple[float, float] | None = None
+		self._cached_weather: WeatherInfo | None = None
+		self._cached_weather_monotonic: float = 0.0
+		self._weather_cache_ttl_seconds = 180
 
 	def get_current(self) -> WeatherInfo:
 		"""Fetch current weather information.
@@ -35,6 +39,13 @@ class WeatherService:
 		Returns:
 			Current weather payload or fallback payload on failure.
 		"""
+
+		now_mono = time.monotonic()
+		if (
+			self._cached_weather is not None
+			and now_mono - self._cached_weather_monotonic < self._weather_cache_ttl_seconds
+		):
+			return self._cached_weather
 
 		if self._provider != "open-meteo":
 			return self._fallback("unsupported_provider")
@@ -61,7 +72,7 @@ class WeatherService:
 			response.raise_for_status()
 			payload = response.json()
 			current = payload.get("current", {})
-			return WeatherInfo(
+			weather_info = WeatherInfo(
 				summary=f"code:{current.get('weather_code', 'n/a')}",
 				temperature_celsius=self._to_float_or_none(current.get("temperature_2m")),
 				apparent_temperature_celsius=self._to_float_or_none(
@@ -69,8 +80,14 @@ class WeatherService:
 				),
 				updated_at=datetime.now(UTC),
 			)
+			self._cached_weather = weather_info
+			self._cached_weather_monotonic = now_mono
+			return weather_info
 		except requests.RequestException:
-			return self._fallback("network_error")
+			fallback = self._fallback("network_error")
+			self._cached_weather = fallback
+			self._cached_weather_monotonic = now_mono
+			return fallback
 
 	def _fallback(self, reason: str) -> WeatherInfo:
 		"""Build fallback weather payload.

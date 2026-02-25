@@ -37,7 +37,7 @@ class DashboardRenderer:
         self._main_area_x = self._sidebar_width + PANEL_SPACING
         self._main_area_width = self._content_width - self._main_area_x
 
-        self._card_height = 236
+        self._card_height = 270
         self._github_height = self._content_height - self._card_height - PANEL_SPACING
 
         # Panel renderers.

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, cast
 
@@ -15,7 +14,6 @@ from src.ui.constants import (
     FONT_SIZE_SMALL,
     FONT_SIZE_TITLE,
     GRAY_BLACK,
-    GRAY_LIGHT,
     GRAY_MID,
     GRAY_WHITE,
     MARGIN,
@@ -29,7 +27,7 @@ if TYPE_CHECKING:
 
 
 class GitHubPanel:
-    """Render GitHub contribution calendar and stats in 3-column layout."""
+    """Render compact GitHub stats and 21-day contribution calendar."""
 
     def __init__(self, width: int, height: int, username: str, organization: str) -> None:
         self._width = width
@@ -40,192 +38,123 @@ class GitHubPanel:
     def render(self, github: GitHubMonthlyStats) -> Image.Image:
         image = Image.new("L", (self._width, self._height), GRAY_WHITE)
 
-        title_size = FONT_SIZE_TITLE + 1
-        label_size = FONT_SIZE_LARGE + 1
-        body_size = FONT_SIZE_NORMAL + 1
-        meta_size = FONT_SIZE_SMALL + 1
+        title_size = FONT_SIZE_TITLE
+        label_size = FONT_SIZE_LARGE
+        body_size = FONT_SIZE_NORMAL
+        meta_size = FONT_SIZE_SMALL
 
-        col_spacing = MARGIN
-        col_padding = 6
-        content_width = self._width - 2 * MARGIN - 2 * col_spacing
-
-        # Widen center calendar column to remove left-side visual imbalance.
-        min_calendar_width = 112
-        preferred_calendar_width = max(120, int(content_width * 0.32))
-        max_calendar_width = max(min_calendar_width, int(content_width * 0.42))
-        col2_width = min(max_calendar_width, max(min_calendar_width, preferred_calendar_width))
-
-        remaining = max(0, content_width - col2_width)
-        col1_width = remaining // 2
-        col3_width = remaining - col1_width
-
-        col1_x_base = MARGIN
-        col2_x_base = col1_x_base + col1_width + col_spacing
-        col3_x_base = col2_x_base + col2_width + col_spacing
-
-        col1_x = col1_x_base + col_padding
-        col2_x = col2_x_base + col_padding
-        col3_x = col3_x_base + col_padding
-
-        y = MARGIN
+        content_x = MARGIN
+        content_width = self._width - 2 * MARGIN
+        y = MARGIN + 1
 
         draw_text(
             image,
-            (MARGIN, y),
+            (content_x, y),
             "GitHub",
             fill=GRAY_BLACK,
             font_size=title_size,
         )
-        y += TITLE_LINE_HEIGHT + 5
+        y += TITLE_LINE_HEIGHT + 10
 
-        self._render_user_stats(
-            image,
-            col1_x,
-            y,
-            col1_width,
-            github,
-            label_size,
-            body_size,
-            meta_size,
+        user_commits = sum(day.commit_count for day in github.contributions)
+        user_code_lines = max(0, github.user_monthly_code_lines)
+        org_code_lines = max(0, github.organization_monthly_code_lines)
+
+        y = self._render_summary_row(
+            image=image,
+            x=content_x,
+            y=y,
+            width=content_width,
+            name=self._username,
+            commit_count=user_commits,
+            code_lines=user_code_lines,
+            name_size=label_size,
+            value_size=body_size,
+            meta_size=meta_size,
+        )
+        y = self._render_summary_row(
+            image=image,
+            x=content_x,
+            y=y,
+            width=content_width,
+            name=self._organization,
+            commit_count=github.organization_monthly_commit_count,
+            code_lines=org_code_lines,
+            name_size=label_size,
+            value_size=body_size,
+            meta_size=meta_size,
         )
 
-        self._render_contribution_calendar(image, col2_x, y, col2_width, github, meta_size)
-
-        self._render_org_stats(
-            image,
-            col3_x,
-            y,
-            col3_width,
-            github,
-            label_size,
-            body_size,
-            meta_size,
-        )
-
-        separator_x1 = col1_x_base + col1_width + col_spacing // 2
-        separator_x2 = col2_x_base + col2_width + col_spacing // 2
         draw_line(
             image,
-            (separator_x1, y, separator_x1, self._height - MARGIN),
-            fill=GRAY_LIGHT,
+            (content_x, y - 2, content_x + content_width, y - 2),
+            fill=GRAY_MID,
             width=1,
         )
-        draw_line(
-            image,
-            (separator_x2, y, separator_x2, self._height - MARGIN),
-            fill=GRAY_LIGHT,
-            width=1,
+
+        self._render_contribution_calendar(
+            image=image,
+            x=content_x,
+            y=y + 20,
+            width=content_width,
+            github=github,
+            meta_size=meta_size,
         )
 
         return image
 
-    def _render_user_stats(
+    def _render_summary_row(
         self,
         image: Image.Image,
         x: int,
         y: int,
         width: int,
-        github: GitHubMonthlyStats,
-        label_size: int,
-        body_size: int,
+        name: str,
+        commit_count: int,
+        code_lines: int,
+        name_size: int,
+        value_size: int,
         meta_size: int,
-    ) -> None:
-        name_max_width = max(40, width - 20)
-        user_label, fitted_size = self._fit_label_text(
+    ) -> int:
+        """Render one compact summary row (name + stats on same line)."""
+
+        row_height = TEXT_LINE_HEIGHT + 8
+        name_max_width = max(200, int(width * 0.32))
+        name_label, fitted_size = self._fit_label_text(
             image=image,
-            text=self._username,
+            text=name,
             max_width=name_max_width,
-            preferred_size=label_size,
+            preferred_size=name_size,
             min_size=max(14, meta_size),
         )
-        draw_text(image, (x, y), user_label, fill=GRAY_BLACK, font_size=fitted_size)
-        y += TEXT_LINE_HEIGHT + 5
+        draw_text(image, (x, y), name_label, fill=GRAY_BLACK, font_size=fitted_size)
 
-        draw_line(image, (x, y, x + width - 20, y), fill=GRAY_MID, width=1)
-        y += 10
-
-        if github.contributions:
-            total_commits = sum(day.commit_count for day in github.contributions)
-            draw_text(
-                image,
-                (x, y),
-                f"Commits: {total_commits}",
-                fill=GRAY_BLACK,
-                font_size=body_size,
-            )
-            y += TEXT_LINE_HEIGHT
-            draw_text(
-                image,
-                (x, y),
-                f"Days: {len(github.contributions)}",
-                fill=GRAY_MID,
-                font_size=meta_size,
-            )
-        else:
-            draw_text(
-                image,
-                (x, y),
-                "No data",
-                fill=GRAY_MID,
-                font_size=meta_size,
-            )
-
-    def _render_org_stats(
-        self,
-        image: Image.Image,
-        x: int,
-        y: int,
-        width: int,
-        github: GitHubMonthlyStats,
-        label_size: int,
-        body_size: int,
-        meta_size: int,
-    ) -> None:
-        name_max_width = max(40, width - 20)
-        org_label, fitted_size = self._fit_label_text(
+        stats_y = y
+        stats_x = x + name_max_width + 20
+        commit_x = stats_x
+        self._draw_fixed_width_stat(
             image=image,
-            text=self._organization,
-            max_width=name_max_width,
-            preferred_size=label_size,
-            min_size=max(14, meta_size),
+            x=commit_x,
+            y=stats_y,
+            label="COMMITS",
+            value=max(0, commit_count),
+            value_box_width=48,
+            font_size=value_size,
         )
-        draw_text(image, (x, y), org_label, fill=GRAY_BLACK, font_size=fitted_size)
-        y += TEXT_LINE_HEIGHT + 5
 
-        draw_line(image, (x, y, x + width - 20, y), fill=GRAY_MID, width=1)
-        y += 10
+        code_x = commit_x + 160
+        self._draw_fixed_width_stat(
+            image=image,
+            x=code_x,
+            y=stats_y,
+            label="LINES",
+            value=max(0, code_lines),
+            value_box_width=60,
+            font_size=value_size,
+        )
 
-        draw_text(
-            image,
-            (x, y),
-            f"Repos: {github.organization_repo_count}",
-            fill=GRAY_BLACK,
-            font_size=body_size,
-        )
-        y += TEXT_LINE_HEIGHT
-        draw_text(
-            image,
-            (x, y),
-            f"Commits: {github.organization_monthly_commit_count}",
-            fill=GRAY_BLACK,
-            font_size=body_size,
-        )
-        y += TEXT_LINE_HEIGHT
-        draw_text(
-            image,
-            (x, y),
-            f"+{github.organization_additions}",
-            fill=GRAY_BLACK,
-            font_size=meta_size,
-        )
-        y += TEXT_LINE_HEIGHT
-        draw_text(
-            image,
-            (x, y),
-            f"-{github.organization_deletions}",
-            fill=GRAY_MID,
-            font_size=meta_size,
-        )
+        draw_line(image, (x, y + row_height - 3, x + width, y + row_height - 3), fill=GRAY_MID, width=1)
+        return y + row_height
 
     def _render_contribution_calendar(
         self,
@@ -236,104 +165,81 @@ class GitHubPanel:
         github: GitHubMonthlyStats,
         meta_size: int,
     ) -> None:
-        draw_text(image, (x + 2, y), "Month", fill=GRAY_MID, font_size=meta_size)
-        y += TEXT_LINE_HEIGHT + 2
+        draw = ImageDraw.Draw(image)
 
-        today = date.today()
-        first_of_month = today.replace(day=1)
-        if first_of_month.month == 12:
-            next_month_first = first_of_month.replace(year=first_of_month.year + 1, month=1, day=1)
-        else:
-            next_month_first = first_of_month.replace(month=first_of_month.month + 1, day=1)
-        last_of_month = next_month_first - timedelta(days=1)
-
-        cols = 7
-        first_weekday = first_of_month.weekday()
-        total_days = last_of_month.day
-        weeks = (first_weekday + total_days + cols - 1) // cols
-        weeks = max(4, min(5, weeks))
-
+        cols = 21
+        cell_spacing = 5
         grid_padding = 4
-        cell_spacing = 3
         available_width = max(1, width - grid_padding * 2)
-        cell_size = max(8, min(16, (available_width - (cols - 1) * cell_spacing) // cols))
+        cell_size = max(1, (available_width - (cols - 1) * cell_spacing) // cols)
         grid_width = cols * cell_size + (cols - 1) * cell_spacing
         calendar_x = x + max(0, (width - grid_width) // 2)
 
+        today = date.today()
+        current_week_start = today - timedelta(days=(today.weekday() + 1) % 7)
+        start_date = current_week_start - timedelta(days=14)
+
         contrib_map = {item.day: item.commit_count for item in github.contributions}
 
-        week_payloads = self._build_calendar_week_payloads(
-            first_of_month=first_of_month,
-            total_days=total_days,
-            weeks=weeks,
-            cols=cols,
-            contrib_map=contrib_map,
-        )
+        row_y = y
+        for col in range(cols):
+            current_date = start_date + timedelta(days=col)
+            commit_count = contrib_map.get(current_date, 0)
+            fill = self._resolve_contribution_fill(commit_count)
+            cell_x = calendar_x + col * (cell_size + cell_spacing)
 
-        for week_idx, cells in week_payloads:
-            row_y = y + week_idx * (cell_size + cell_spacing)
-            for col, fill, outline in cells:
-                cell_x = calendar_x + col * (cell_size + cell_spacing)
+            draw_rect(
+                image,
+                (cell_x, row_y, cell_x + cell_size, row_y + cell_size),
+                fill=fill,
+                outline=GRAY_MID,
+                width=1,
+            )
 
-                draw_rect(
-                    image,
-                    (cell_x, row_y, cell_x + cell_size, row_y + cell_size),
-                    fill=fill,
-                    outline=outline,
-                    width=1,
-                )
+            day_text = str(current_date.day)
+            day_font_size = 16
+            font = self._load_font(day_font_size)
+            text_box = draw.textbbox((0, 0), day_text, font=font)
+            text_w = text_box[2] - text_box[0]
+            text_h = text_box[3] - text_box[1]
+            text_x = int(cell_x + max(0, (cell_size - text_w) // 2))
+            text_y = int(row_y + cell_size + 3 + max(0, (day_font_size - text_h) // 2))
+            draw_text(image, (text_x, text_y), day_text, fill=GRAY_BLACK, font_size=day_font_size)
 
-    def _build_calendar_week_payloads(
+    def _draw_fixed_width_stat(
         self,
-        first_of_month: date,
-        total_days: int,
-        weeks: int,
-        cols: int,
-        contrib_map: dict[date, int],
-    ) -> list[tuple[int, list[tuple[int, int, int]]]]:
-        """Build per-week calendar cell styles, using parallel computation by week.
+        image: Image.Image,
+        x: int,
+        y: int,
+        label: str,
+        value: int,
+        value_box_width: int,
+        font_size: int,
+    ) -> None:
+        """Draw label + fixed-width centered numeric value (no zero padding)."""
 
-        Returns:
-            List of tuples: (week_index, [(col, fill, outline), ...]).
-        """
+        draw = ImageDraw.Draw(image)
+        label_text = f"{label}"
+        draw_text(image, (x, y), label_text, fill=GRAY_BLACK, font_size=font_size)
 
-        start_day_counter = 1 - first_of_month.weekday()
+        label_font = self._load_font(font_size)
+        label_box = draw.textbbox((0, 0), label_text, font=label_font)
+        label_width = label_box[2] - label_box[0]
 
-        def build_week(week_idx: int) -> tuple[int, list[tuple[int, int, int]]]:
-            week_start_day = start_day_counter + week_idx * cols
-            cells: list[tuple[int, int, int]] = []
+        value_text = str(max(0, value))
+        value_font = self._load_font(font_size)
+        value_box = draw.textbbox((0, 0), value_text, font=value_font)
+        value_width = value_box[2] - value_box[0]
 
-            for col in range(cols):
-                current_day = week_start_day + col
-
-                if current_day < 1 or current_day > total_days:
-                    cells.append((col, GRAY_WHITE, GRAY_LIGHT))
-                    continue
-
-                current_date = first_of_month.replace(day=current_day)
-                commit_count = contrib_map.get(current_date, 0)
-                fill = self._resolve_contribution_fill(commit_count)
-                cells.append((col, fill, GRAY_MID))
-
-            return week_idx, cells
-
-        if weeks <= 1:
-            return [build_week(0)]
-
-        with ThreadPoolExecutor(max_workers=min(weeks, 4)) as executor:
-            payloads = list(executor.map(build_week, range(weeks)))
-
-        payloads.sort(key=lambda item: item[0])
-        return payloads
+        value_x = int(x + label_width + 10 + max(0, (value_box_width - value_width) // 2))
+        draw_text(image, (value_x, y), value_text, fill=GRAY_BLACK, font_size=font_size)
 
     @staticmethod
     def _resolve_contribution_fill(commit_count: int) -> int:
-        """Map contribution count to grayscale fill value."""
-
         if commit_count == 0:
             return GRAY_WHITE
         if commit_count <= 2:
-            return GRAY_LIGHT
+            return 140
         if commit_count <= 5:
             return GRAY_MID
         return GRAY_BLACK
@@ -371,16 +277,14 @@ class GitHubPanel:
     @staticmethod
     def _load_font(font_size: int) -> ImageFont.ImageFont:
         """Load the primary UI font with fallback to default font."""
-        try:
-            return cast(ImageFont.ImageFont, ImageFont.truetype("assets/fonts/MapleMono.ttf", font_size))
-        except OSError:
+        candidates = [
+            "assets/fonts/MapleMono-CN-Regular.ttf",
+            "assets/fonts/MapleMono.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+        for path in candidates:
             try:
-                return cast(
-                    ImageFont.ImageFont,
-                    ImageFont.truetype(
-                        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                        font_size,
-                    ),
-                )
+                return cast(ImageFont.ImageFont, ImageFont.truetype(path, font_size))
             except OSError:
-                return cast(ImageFont.ImageFont, ImageFont.load_default())
+                continue
+        return cast(ImageFont.ImageFont, ImageFont.load_default())

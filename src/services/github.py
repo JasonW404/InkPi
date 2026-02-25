@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import UTC, date, datetime
 import logging
+import time
 
 import requests
 
@@ -31,6 +32,9 @@ class GitHubService:
 		self._api_key = config.github.api_key
 		self._timeout_seconds = 12
 		self._logger = logging.getLogger(self.__class__.__name__)
+		self._cached_monthly_stats: GitHubMonthlyStats | None = None
+		self._cached_monthly_stats_monotonic: float = 0.0
+		self._stats_cache_ttl_seconds = 300
 
 	def get_monthly_stats(self) -> GitHubMonthlyStats:
 		"""Collect current-month GitHub metrics.
@@ -38,6 +42,13 @@ class GitHubService:
 		Returns:
 			Monthly GitHub statistics for dashboard rendering.
 		"""
+
+		now_mono = time.monotonic()
+		if (
+			self._cached_monthly_stats is not None
+			and now_mono - self._cached_monthly_stats_monotonic < self._stats_cache_ttl_seconds
+		):
+			return self._cached_monthly_stats
 
 		now = datetime.now(UTC)
 		month_start = date(year=now.year, month=now.month, day=1)
@@ -56,20 +67,31 @@ class GitHubService:
 			repos=repos,
 			headers=headers,
 		)
+		user_code_lines = self._fetch_user_monthly_code_lines(
+			month_start=month_start,
+			repos=repos,
+			headers=headers,
+		)
 		repo_count, org_commit_count, additions, deletions = self._fetch_org_monthly_stats(
 			month_start=month_start,
 			repos=repos,
 			headers=headers,
 		)
+		org_code_lines = max(0, additions) + max(0, deletions)
 
-		return GitHubMonthlyStats(
+		stats = GitHubMonthlyStats(
 			month=month_label,
 			contributions=daily_commits,
+			user_monthly_code_lines=user_code_lines,
 			organization_repo_count=repo_count,
 			organization_monthly_commit_count=org_commit_count,
+			organization_monthly_code_lines=org_code_lines,
 			organization_additions=additions,
 			organization_deletions=deletions,
 		)
+		self._cached_monthly_stats = stats
+		self._cached_monthly_stats_monotonic = now_mono
+		return stats
 
 	def _fetch_user_monthly_commit_days(
 		self,
@@ -131,6 +153,60 @@ class GitHubService:
 			GitHubContributionDay(day=day, commit_count=count)
 			for day, count in sorted(commit_counter.items(), key=lambda item: item[0])
 		]
+
+	def _fetch_user_monthly_code_lines(
+		self,
+		month_start: date,
+		repos: list[str],
+		headers: dict[str, str],
+	) -> int:
+		"""Fetch user monthly line changes from authored commits in organization repos."""
+
+		if not (self._api_key and self._organization and self._username and repos):
+			return 0
+
+		since = datetime.combine(month_start, datetime.min.time(), tzinfo=UTC).isoformat()
+		until = datetime.now(UTC).isoformat()
+		total_lines = 0
+
+		for repo_name in repos:
+			page = 1
+			while True:
+				try:
+					response = requests.get(
+						f"https://api.github.com/repos/{self._organization}/{repo_name}/commits",
+						headers=headers,
+						params={
+							"since": since,
+							"until": until,
+							"author": self._username,
+							"per_page": 100,
+							"page": page,
+						},
+						timeout=self._timeout_seconds,
+					)
+					response.raise_for_status()
+					payload = response.json()
+				except requests.RequestException:
+					break
+
+				if not payload:
+					break
+
+				for item in payload:
+					sha = item.get("sha")
+					if not sha:
+						continue
+					additions, deletions = self._fetch_commit_stats(
+						repo_name=repo_name,
+						commit_sha=sha,
+						headers=headers,
+					)
+					total_lines += max(0, additions) + max(0, deletions)
+
+				page += 1
+
+		return total_lines
 
 	def _fetch_org_monthly_stats(
 		self,

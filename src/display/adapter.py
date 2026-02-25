@@ -51,7 +51,7 @@ class EPDAdapter:
             self._epd_module = epd4in26
             self._hardware_available = True
             self._logger.info("EPD hardware driver loaded successfully")
-        except (ImportError, OSError) as e:
+        except Exception as e:
             self._epd_module = None
             self._logger.warning(f"EPD hardware unavailable, running in simulation mode: {e}")
     
@@ -168,16 +168,23 @@ class EPDAdapter:
             return False
         
         self._logger.info("Performing partial refresh...")
-        
-        # Convert to 1-bit for partial refresh (EPD limitation).
-        # Note: Partial refresh on this hardware doesn't support 4-gray.
-        buffer = self._epd.getbuffer(image)
+
+        partial_image = self._prepare_partial_image(image)
+        buffer = self._epd.getbuffer(partial_image)
         
         # Display with partial mode.
         self._epd.display_Partial(buffer)
         
         self._logger.info("Partial refresh completed")
         return True
+
+    @staticmethod
+    def _prepare_partial_image(image: Image.Image) -> Image.Image:
+        """Prepare image for partial update with stable thresholding."""
+
+        grayscale = image.convert("L")
+        threshold = 150
+        return grayscale.point(lambda value: 255 if value >= threshold else 0, mode="1")
     
     def clear(self) -> bool:
         """Clear the display to white.

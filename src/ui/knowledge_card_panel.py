@@ -48,10 +48,9 @@ class KnowledgeCardPanel:
         """
         image = Image.new("L", (self._width, self._height), GRAY_WHITE)
 
-        # Right-top knowledge card text: +1 size for readability.
-        title_size = FONT_SIZE_TITLE + 1
-        body_size = FONT_SIZE_NORMAL + 1
-        meta_size = FONT_SIZE_SMALL + 1
+        title_size = FONT_SIZE_TITLE
+        body_size = FONT_SIZE_NORMAL
+        meta_size = FONT_SIZE_NORMAL
 
         y = MARGIN
 
@@ -73,7 +72,7 @@ class KnowledgeCardPanel:
         # Source label at bottom.
         source_y = self._height - MARGIN - TEXT_LINE_HEIGHT
         source_text = truncate_text(f"Source: {card.source}", 40)
-        draw_text(image, (MARGIN, source_y), source_text, fill=GRAY_MID, font_size=meta_size)
+        draw_text(image, (MARGIN, source_y), source_text, fill=GRAY_BLACK, font_size=meta_size)
 
         return image
 

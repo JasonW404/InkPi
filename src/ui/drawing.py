@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+from pathlib import Path
 from typing import TYPE_CHECKING
+from typing import Literal
 
 from PIL import ImageDraw, ImageFont
 
@@ -12,12 +15,58 @@ if TYPE_CHECKING:
     from PIL import Image
 
 
+FontWeight = Literal["regular", "medium", "semibold", "bold"]
+
+
+@lru_cache(maxsize=64)
+def _load_font(font_size: int, font_weight: FontWeight) -> ImageFont.ImageFont:
+    weight_candidates: dict[FontWeight, list[str]] = {
+        "regular": [
+            "MapleMono-CN-Regular.ttf",
+            "MapleMono.ttf",
+        ],
+        "medium": [
+            "MapleMono-CN-Medium.ttf",
+            "MapleMono-CN-Regular.ttf",
+            "MapleMono.ttf",
+        ],
+        "semibold": [
+            "MapleMono-CN-SemiBold.ttf",
+            "MapleMono-CN-Medium.ttf",
+            "MapleMono-CN-Regular.ttf",
+            "MapleMono.ttf",
+        ],
+        "bold": [
+            "MapleMono-CN-Bold.ttf",
+            "MapleMono-CN-SemiBold.ttf",
+            "MapleMono-CN-Medium.ttf",
+            "MapleMono-CN-Regular.ttf",
+            "MapleMono.ttf",
+        ],
+    }
+
+    font_dir = Path("assets/fonts")
+    for filename in weight_candidates.get(font_weight, weight_candidates["regular"]):
+        font_path = font_dir / filename
+        if font_path.exists():
+            try:
+                return ImageFont.truetype(str(font_path), font_size)
+            except OSError:
+                continue
+
+    try:
+        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+    except OSError:
+        return ImageFont.load_default()
+
+
 def draw_text(
     image: Image.Image,
     xy: tuple[int, int],
     text: str,
     fill: int = GRAY_BLACK,
     font_size: int = FONT_SIZE_NORMAL,
+    font_weight: FontWeight = "regular",
 ) -> None:
     """Draw text at specified position.
 
@@ -27,16 +76,10 @@ def draw_text(
         text: Text content to draw.
         fill: Grayscale fill color (0-255).
         font_size: Logical font size.
+        font_weight: Font weight for MapleMono selection.
     """
     draw = ImageDraw.Draw(image)
-    # Prefer project-provided MapleMono font if present, then fall back to system DejaVu.
-    try:
-        font = ImageFont.truetype("assets/fonts/MapleMono.ttf", font_size)
-    except OSError:
-        try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
-        except OSError:
-            font = ImageFont.load_default()
+    font = _load_font(font_size, font_weight)
     draw.text(xy, text, fill=fill, font=font)
 
 

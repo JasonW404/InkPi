@@ -26,12 +26,14 @@ EINK_GITHUB_API_KEY=你的GitHub Token（可选，用于私有仓库数据）
 ### 2. 生成预览
 
 ```bash
-# 使用环境变量
-export $(cat .env | xargs)
-uv run python preview.py
+# 使用 main.py 的 preview 模式（推荐）
+uv run python main.py --preview
 
-# 或者直接指定环境变量
-EINK_WEATHER_LOCATION="上海" EINK_TIMEZONE="Asia/Shanghai" uv run python preview.py
+# 指定输出文件
+uv run python main.py --preview preview.png
+
+# 兼容旧入口（内部转调 main.preview()）
+uv run python preview.py
 ```
 
 预览图将保存到 `preview.png`。
@@ -39,10 +41,7 @@ EINK_WEATHER_LOCATION="上海" EINK_TIMEZONE="Asia/Shanghai" uv run python previ
 ### 3. 运行Dashboard
 
 ```bash
-# 加载环境变量
-export $(cat .env | xargs)
-
-# 启动dashboard应用
+# 默认进入实机模式
 uv run python main.py
 ```
 
@@ -91,6 +90,10 @@ uv run python main.py
 - `EINK_PARTIAL_REFRESH_INTERVAL_SECONDS`: 局部刷新间隔（秒，默认60）
 - `EINK_FULL_REFRESH_INTERVAL_SECONDS`: 完全刷新间隔（秒，默认3600）
 - `EINK_MAX_PARTIAL_REFRESHES_BEFORE_FULL`: 强制完全刷新前的最大局部刷新次数（默认30）
+- `EINK_GHOSTING_MODE`: 残影模式（默认 `balanced`）
+  - `conservative`: 更积极触发全刷，残影更少
+  - `balanced`: 平衡模式（推荐）
+  - `aggressive`: 更少全刷，速度更快，但可能残影更明显
 
 ## 数据源状态
 
