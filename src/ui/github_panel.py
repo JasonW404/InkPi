@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, cast
 
@@ -261,43 +262,81 @@ class GitHubPanel:
 
         contrib_map = {item.day: item.commit_count for item in github.contributions}
 
-        day_counter = 1 - first_weekday
-        for week_idx in range(weeks):
+        week_payloads = self._build_calendar_week_payloads(
+            first_of_month=first_of_month,
+            total_days=total_days,
+            weeks=weeks,
+            cols=cols,
+            contrib_map=contrib_map,
+        )
+
+        for week_idx, cells in week_payloads:
             row_y = y + week_idx * (cell_size + cell_spacing)
-            for col in range(cols):
-                current_day = day_counter
-                day_counter += 1
+            for col, fill, outline in cells:
                 cell_x = calendar_x + col * (cell_size + cell_spacing)
-
-                if current_day < 1 or current_day > total_days:
-                    draw_rect(
-                        image,
-                        (cell_x, row_y, cell_x + cell_size, row_y + cell_size),
-                        fill=GRAY_WHITE,
-                        outline=GRAY_LIGHT,
-                        width=1,
-                    )
-                    continue
-
-                current_date = first_of_month.replace(day=current_day)
-                commit_count = contrib_map.get(current_date, 0)
-
-                if commit_count == 0:
-                    fill = GRAY_WHITE
-                elif commit_count <= 2:
-                    fill = GRAY_LIGHT
-                elif commit_count <= 5:
-                    fill = GRAY_MID
-                else:
-                    fill = GRAY_BLACK
 
                 draw_rect(
                     image,
                     (cell_x, row_y, cell_x + cell_size, row_y + cell_size),
                     fill=fill,
-                    outline=GRAY_MID,
+                    outline=outline,
                     width=1,
                 )
+
+    def _build_calendar_week_payloads(
+        self,
+        first_of_month: date,
+        total_days: int,
+        weeks: int,
+        cols: int,
+        contrib_map: dict[date, int],
+    ) -> list[tuple[int, list[tuple[int, int, int]]]]:
+        """Build per-week calendar cell styles, using parallel computation by week.
+
+        Returns:
+            List of tuples: (week_index, [(col, fill, outline), ...]).
+        """
+
+        start_day_counter = 1 - first_of_month.weekday()
+
+        def build_week(week_idx: int) -> tuple[int, list[tuple[int, int, int]]]:
+            week_start_day = start_day_counter + week_idx * cols
+            cells: list[tuple[int, int, int]] = []
+
+            for col in range(cols):
+                current_day = week_start_day + col
+
+                if current_day < 1 or current_day > total_days:
+                    cells.append((col, GRAY_WHITE, GRAY_LIGHT))
+                    continue
+
+                current_date = first_of_month.replace(day=current_day)
+                commit_count = contrib_map.get(current_date, 0)
+                fill = self._resolve_contribution_fill(commit_count)
+                cells.append((col, fill, GRAY_MID))
+
+            return week_idx, cells
+
+        if weeks <= 1:
+            return [build_week(0)]
+
+        with ThreadPoolExecutor(max_workers=min(weeks, 4)) as executor:
+            payloads = list(executor.map(build_week, range(weeks)))
+
+        payloads.sort(key=lambda item: item[0])
+        return payloads
+
+    @staticmethod
+    def _resolve_contribution_fill(commit_count: int) -> int:
+        """Map contribution count to grayscale fill value."""
+
+        if commit_count == 0:
+            return GRAY_WHITE
+        if commit_count <= 2:
+            return GRAY_LIGHT
+        if commit_count <= 5:
+            return GRAY_MID
+        return GRAY_BLACK
 
     def _fit_label_text(
         self,
