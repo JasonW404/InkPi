@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from PIL import Image
 from PIL import ImageDraw, ImageFont
@@ -31,65 +31,43 @@ class GitHubPanel:
     """Render GitHub contribution calendar and stats in 3-column layout."""
 
     def __init__(self, width: int, height: int, username: str, organization: str) -> None:
-        """Initialize panel dimensions and identity labels.
-
-        Args:
-            width: Panel width in pixels.
-            height: Panel height in pixels.
-            username: GitHub username for display.
-            organization: GitHub organization for display.
-        """
         self._width = width
         self._height = height
         self._username = username or "User"
         self._organization = organization or "Org"
 
     def render(self, github: GitHubMonthlyStats) -> Image.Image:
-        """Render GitHub panel in 3-column layout.
-
-        Args:
-            github: Monthly GitHub statistics.
-
-        Returns:
-            PIL image with rendered content.
-        """
         image = Image.new("L", (self._width, self._height), GRAY_WHITE)
 
-        # Right-bottom GitHub text: +1 size for readability.
         title_size = FONT_SIZE_TITLE + 1
         label_size = FONT_SIZE_LARGE + 1
         body_size = FONT_SIZE_NORMAL + 1
         meta_size = FONT_SIZE_SMALL + 1
 
-        # Calculate asymmetric 3-column widths:
-        # left/right columns stay equal width, center calendar keeps minimum width.
         col_spacing = MARGIN
         col_padding = 6
         content_width = self._width - 2 * MARGIN - 2 * col_spacing
-        min_calendar_width = 94
-        preferred_calendar_width = 102
-        max_calendar_width = 118
-        col2_width = min(
-            max_calendar_width,
-            max(min_calendar_width, int(content_width * 0.24), preferred_calendar_width),
-        )
+
+        # Widen center calendar column to remove left-side visual imbalance.
+        min_calendar_width = 112
+        preferred_calendar_width = max(120, int(content_width * 0.32))
+        max_calendar_width = max(min_calendar_width, int(content_width * 0.42))
+        col2_width = min(max_calendar_width, max(min_calendar_width, preferred_calendar_width))
+
         remaining = max(0, content_width - col2_width)
         col1_width = remaining // 2
         col3_width = remaining - col1_width
 
-        # Base positions for each column.
         col1_x_base = MARGIN
         col2_x_base = col1_x_base + col1_width + col_spacing
         col3_x_base = col2_x_base + col2_width + col_spacing
-        
-        # Content positions with internal padding.
+
         col1_x = col1_x_base + col_padding
         col2_x = col2_x_base + col_padding
         col3_x = col3_x_base + col_padding
 
         y = MARGIN
 
-        # Title spanning full width (no month needed since sidebar shows date).
         draw_text(
             image,
             (MARGIN, y),
@@ -99,7 +77,6 @@ class GitHubPanel:
         )
         y += TITLE_LINE_HEIGHT + 5
 
-        # Column 1: User statistics (left).
         self._render_user_stats(
             image,
             col1_x,
@@ -111,10 +88,8 @@ class GitHubPanel:
             meta_size,
         )
 
-        # Column 2: 5-week contribution calendar (center).
         self._render_contribution_calendar(image, col2_x, y, col2_width, github, meta_size)
 
-        # Column 3: Organization statistics (right).
         self._render_org_stats(
             image,
             col3_x,
@@ -126,7 +101,6 @@ class GitHubPanel:
             meta_size,
         )
 
-        # Draw vertical separators between columns.
         separator_x1 = col1_x_base + col1_width + col_spacing // 2
         separator_x2 = col2_x_base + col2_width + col_spacing // 2
         draw_line(
@@ -155,8 +129,6 @@ class GitHubPanel:
         body_size: int,
         meta_size: int,
     ) -> None:
-        """Render user statistics in left column."""
-        # User label with dynamic font fitting.
         name_max_width = max(40, width - 20)
         user_label, fitted_size = self._fit_label_text(
             image=image,
@@ -167,12 +139,10 @@ class GitHubPanel:
         )
         draw_text(image, (x, y), user_label, fill=GRAY_BLACK, font_size=fitted_size)
         y += TEXT_LINE_HEIGHT + 5
-        
-        # Draw underline beneath username.
+
         draw_line(image, (x, y, x + width - 20, y), fill=GRAY_MID, width=1)
         y += 10
 
-        # Contribution count.
         if github.contributions:
             total_commits = sum(day.commit_count for day in github.contributions)
             draw_text(
@@ -210,8 +180,6 @@ class GitHubPanel:
         body_size: int,
         meta_size: int,
     ) -> None:
-        """Render organization statistics in right column."""
-        # Org label with dynamic font fitting.
         name_max_width = max(40, width - 20)
         org_label, fitted_size = self._fit_label_text(
             image=image,
@@ -222,12 +190,10 @@ class GitHubPanel:
         )
         draw_text(image, (x, y), org_label, fill=GRAY_BLACK, font_size=fitted_size)
         y += TEXT_LINE_HEIGHT + 5
-        
-        # Draw underline beneath organization name.
+
         draw_line(image, (x, y, x + width - 20, y), fill=GRAY_MID, width=1)
         y += 10
 
-        # Organization stats.
         draw_text(
             image,
             (x, y),
@@ -269,51 +235,53 @@ class GitHubPanel:
         github: GitHubMonthlyStats,
         meta_size: int,
     ) -> None:
-        """Render 5-week contribution calendar in center column."""
-        # Header for calendar with short text to preserve space.
-        draw_text(image, (x + 2, y), "5 Weeks", fill=GRAY_MID, font_size=meta_size)
+        draw_text(image, (x + 2, y), "Month", fill=GRAY_MID, font_size=meta_size)
         y += TEXT_LINE_HEIGHT + 2
 
-        # Compute compact grid geometry to fit a 7×5 calendar
-        # (7 weekdays × 5 weeks). Weeks are rendered as columns,
-        # weekdays as rows to match common contribution calendars.
-        grid_padding = 6
+        today = date.today()
+        first_of_month = today.replace(day=1)
+        if first_of_month.month == 12:
+            next_month_first = first_of_month.replace(year=first_of_month.year + 1, month=1, day=1)
+        else:
+            next_month_first = first_of_month.replace(month=first_of_month.month + 1, day=1)
+        last_of_month = next_month_first - timedelta(days=1)
+
+        cols = 7
+        first_weekday = first_of_month.weekday()
+        total_days = last_of_month.day
+        weeks = (first_weekday + total_days + cols - 1) // cols
+        weeks = max(4, min(5, weeks))
+
+        grid_padding = 4
         cell_spacing = 3
-        weeks = 5
-        days = 7
         available_width = max(1, width - grid_padding * 2)
-        # Determine a slightly larger cell_size while ensuring it fits.
-        cell_size = max(9, min(14, (available_width - (weeks - 1) * cell_spacing) // weeks))
-        grid_width = weeks * cell_size + (weeks - 1) * cell_spacing
+        cell_size = max(8, min(16, (available_width - (cols - 1) * cell_spacing) // cols))
+        grid_width = cols * cell_size + (cols - 1) * cell_spacing
         calendar_x = x + max(0, (width - grid_width) // 2)
 
-        if not github.contributions:
-            draw_text(
-                image,
-                (calendar_x, y),
-                "No activity",
-                fill=GRAY_LIGHT,
-                font_size=meta_size,
-            )
-            return
-        # Build a 5-week grid (7 days × 5 weeks = 35 days).
-        # Weeks are columns and weekdays are rows.
-        today = date.today()
-        start_date = today - timedelta(days=34)  # Go back 4 weeks + current week.
+        contrib_map = {item.day: item.commit_count for item in github.contributions}
 
-        # Create contribution map for quick lookup (date -> commit_count).
-        contrib_map = {d.day: d.commit_count for d in github.contributions}
+        day_counter = 1 - first_weekday
+        for week_idx in range(weeks):
+            row_y = y + week_idx * (cell_size + cell_spacing)
+            for col in range(cols):
+                current_day = day_counter
+                day_counter += 1
+                cell_x = calendar_x + col * (cell_size + cell_spacing)
 
-        for week in range(weeks):
-            for day_idx in range(days):
-                current_date = start_date + timedelta(days=week * 7 + day_idx)
-                if current_date > today:
+                if current_day < 1 or current_day > total_days:
+                    draw_rect(
+                        image,
+                        (cell_x, row_y, cell_x + cell_size, row_y + cell_size),
+                        fill=GRAY_WHITE,
+                        outline=GRAY_LIGHT,
+                        width=1,
+                    )
                     continue
 
-                # Get commit count for this day.
+                current_date = first_of_month.replace(day=current_day)
                 commit_count = contrib_map.get(current_date, 0)
 
-                # Map to grayscale intensity.
                 if commit_count == 0:
                     fill = GRAY_WHITE
                 elif commit_count <= 2:
@@ -323,11 +291,9 @@ class GitHubPanel:
                 else:
                     fill = GRAY_BLACK
 
-                cell_x = calendar_x + week * (cell_size + cell_spacing)
-                cell_y = y + day_idx * (cell_size + cell_spacing)
                 draw_rect(
                     image,
-                    (cell_x, cell_y, cell_x + cell_size, cell_y + cell_size),
+                    (cell_x, row_y, cell_x + cell_size, row_y + cell_size),
                     fill=fill,
                     outline=GRAY_MID,
                     width=1,
@@ -341,19 +307,6 @@ class GitHubPanel:
         preferred_size: int,
         min_size: int,
     ) -> tuple[str, int]:
-        """Fit label text into given width by reducing font size then truncating.
-
-        Args:
-            image: Target image for measuring text.
-            text: Original text.
-            max_width: Maximum render width in pixels.
-            preferred_size: Initial font size.
-            min_size: Lower bound of font size.
-
-        Returns:
-            Tuple of (fitted text, fitted font size).
-        """
-
         draw = ImageDraw.Draw(image)
         text_value = text.strip() or "-"
 
@@ -363,7 +316,6 @@ class GitHubPanel:
             if text_width <= max_width:
                 return text_value, size
 
-        # If still too long at min size, apply hard truncation.
         size = min_size
         font = self._load_font(size)
         if draw.textbbox((0, 0), text_value, font=font)[2] <= max_width:
@@ -380,11 +332,16 @@ class GitHubPanel:
     @staticmethod
     def _load_font(font_size: int) -> ImageFont.ImageFont:
         """Load the primary UI font with fallback to default font."""
-
         try:
-            return ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                font_size,
-            )
+            return cast(ImageFont.ImageFont, ImageFont.truetype("assets/fonts/MapleMono.ttf", font_size))
         except OSError:
-            return ImageFont.load_default()
+            try:
+                return cast(
+                    ImageFont.ImageFont,
+                    ImageFont.truetype(
+                        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                        font_size,
+                    ),
+                )
+            except OSError:
+                return cast(ImageFont.ImageFont, ImageFont.load_default())

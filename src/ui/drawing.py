@@ -29,10 +29,14 @@ def draw_text(
         font_size: Logical font size.
     """
     draw = ImageDraw.Draw(image)
+    # Prefer project-provided MapleMono font if present, then fall back to system DejaVu.
     try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+        font = ImageFont.truetype("assets/fonts/MapleMono.ttf", font_size)
     except OSError:
-        font = ImageFont.load_default()
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+        except OSError:
+            font = ImageFont.load_default()
     draw.text(xy, text, fill=fill, font=font)
 
 
