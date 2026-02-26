@@ -44,6 +44,8 @@ class EPDAdapter:
         self._epd = None
         self._hardware_available = False
         self._initialized = False
+        self._grayscale_enabled = True
+        self._last_refresh_mode: RefreshMode | None = None
         
         # Try to import EPD driver.
         try:
@@ -66,11 +68,14 @@ class EPDAdapter:
         """
         if not self._hardware_available or self._epd_module is None:
             self._logger.info("Simulating EPD initialization (no hardware)")
+            self._grayscale_enabled = grayscale
             self._initialized = True
+            self._last_refresh_mode = None
             return True
         
         try:
             self._epd = self._epd_module.EPD()
+            self._grayscale_enabled = grayscale
             
             if grayscale:
                 self._logger.info("Initializing EPD in 4-grayscale mode...")
@@ -84,6 +89,7 @@ class EPDAdapter:
                 return False
             
             self._initialized = True
+            self._last_refresh_mode = None
             self._logger.info("EPD initialized successfully")
             return True
             
@@ -121,14 +127,37 @@ class EPDAdapter:
             return True
         
         try:
+            self._prepare_for_mode(mode)
+
             if mode == RefreshMode.FULL:
-                return self._display_full(image)
+                result = self._display_full(image)
             else:
-                return self._display_partial(image)
+                result = self._display_partial(image)
+
+            if result:
+                self._last_refresh_mode = mode
+            return result
                 
         except Exception as e:
             self._logger.error(f"EPD display error: {e}")
             return False
+
+    def _prepare_for_mode(self, mode: RefreshMode) -> None:
+        """Ensure controller state is valid for target refresh mode."""
+
+        if not self._hardware_available:
+            return
+
+        if self._epd is None:
+            raise RuntimeError("EPD instance not available")
+
+        if mode == RefreshMode.FULL and self._last_refresh_mode == RefreshMode.PARTIAL:
+            self._logger.info(
+                "Reinitializing EPD before full refresh after partial mode"
+            )
+            result = self._epd.init_4GRAY() if self._grayscale_enabled else self._epd.init()
+            if result != 0:
+                raise RuntimeError("EPD reinitialization for full refresh failed")
     
     def _display_full(self, image: Image.Image) -> bool:
         """Perform full refresh display.

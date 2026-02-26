@@ -372,14 +372,6 @@ class DashboardApplication:
             "ok" if stage_ok else "failed",
         )
 
-        use_grayscale = self._config.screen.grayscale_levels == 4
-        reinit_ok = self._display.initialize(grayscale=use_grayscale)
-        self._logger.info(
-            "shutdown_reinitialize display=%s grayscale=%s",
-            "ok" if reinit_ok else "failed",
-            use_grayscale,
-        )
-
         shutdown_ok = self._display.display(shutdown_image, mode=DisplayRefreshMode.FULL)
 
         self._logger.info(
