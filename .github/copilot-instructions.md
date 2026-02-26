@@ -1,45 +1,49 @@
 # AI Coding Guidelines for eInk Dashboard
 
-## Project Overview
-E-ink dashboard for Raspberry Pi 4B + Waveshare 4.26inch (800x480) display. Renders weather, GitHub stats, system load, and knowledge cards with intelligent refresh strategies (partial 60s / full 3600s).
+## Project Snapshot
+- Raspberry Pi 4B + Waveshare 4.26" (800x480) grayscale dashboard.
 
-## Architecture Layers (understand before contributing)
-1. **Config** [src/config.py](../src/config.py): Environment-driven configuration with frozen dataclasses (ScreenConfig, RefreshConfig, GitHubConfig, WeatherConfig)
-2. **Domain** [src/domain/models.py](../src/domain/models.py): Immutable frozen dataclasses for data contracts (DashboardSnapshot, GitHubMonthlyStats, WeatherInfo, etc.)
-3. **Services** [src/services/](../src/services/): Protocol-based providers implementing contracts from [contracts.py](../src/services/contracts.py); each returns dropdown-safe frozen domain objects
-4. **Rendering** [src/ui/](../src/ui/): Layout panels (SidebarPanel, GitHubPanel, KnowledgeCardPanel) -> DashboardRenderer -> grayscale PIL Image
-5. **Display** [src/display/](../src/display/): EPDAdapter wraps waveshare_epd hardware; DirtyRegionTracker optimizes partial refreshes
-6. **App Runtime** [src/app.py](../src/app.py), [main.py](../main.py): RefreshPolicy orchestrates cycles using monotonic time; DashboardApplication manages signal handlers and graceful shutdown
+## Architecture You Must Preserve
+1. **Config layer**: `src/config.py` builds frozen config dataclasses from `.env` + env vars (`AppConfig.from_env()`).
+2. **Domain layer**: `src/domain/models.py` contains frozen data contracts shared across services and UI.
+3. **Service layer**: `src/services/contracts.py` defines provider Protocols; implementations return domain objects (no raw API payloads).
+4. **Aggregation**: `src/services/dashboard.py` uses `ThreadPoolExecutor` to fetch datetime/weather/github/card concurrently, then system metrics.
+5. **Rendering**: `src/ui/renderer.py` composes `SidebarPanel` + `KnowledgeCardPanel` + `GitHubPanel` into fixed 800x480 grayscale output.
+6. **Display/runtime**: `src/app.py` + `src/display/` run refresh policy, dirty-region detection, ghosting mitigation, and lifecycle screens.
 
-## Critical Patterns
-- **Service Contracts**: Pass Protocol-typed deps (DateTimeProvider, WeatherProvider, etc.), NOT concrete classes. Use dependency injection in constructors.
-- **Domain-Driven**: All services return frozen dataclasses from `src.domain.models`—never raw API responses. Providers fail gracefully, returning fallback data.
-- **Configuration**: All dynamic values via AppConfig with environment variable overrides; no hardcoded defaults except in @dataclass defaults.
-- **Refresh Strategy**: Full refresh when `elapsed_since_full >= full_refresh_interval_seconds` OR `partial_streak_limit` exceeded. Check hours, not raw seconds [Full rules](../docs/ai/instructions/refresh-policy-rules.md).
+## Runtime Data Flow (critical)
+- `main.py` wires providers and starts preview (`preview()`) or hardware loop (`DashboardApplication.run()`).
+- `DashboardApplication` behavior to keep:
+	- startup screen -> initial snapshot -> forced full refresh baseline
+	- refresh policy by monotonic time + partial counter (`RefreshPolicy`)
+	- dirty check via `DirtyRegionTracker.compare()` before deciding display action
+	- ghosting override can upgrade partial decision to full (`_should_force_full_for_ghosting`)
+	- graceful SIGINT/SIGTERM shutdown screen then display sleep
 
-## Naming & Code Organization
-- **Naming**: *Config (config classes), *Service/*Provider (data providers), *Panel/*Renderer (UI components), *Adapter (hardware abstraction)
-- **Docstrings**: Google style with module description, Args/Returns for complex functions. Skip trivial comments.
-- **Type Hints**: Always annotate; use type imports with `from __future__ import annotations`
-- **Errors**: Catch external API failures; log with context (provider name, operation, params); return fallback data to prevent main loop crash
+## Service & Error Patterns (project-specific)
+- Keep dependency injection Protocol-typed in constructors (see `DashboardDataService`).
+- Provider failures should degrade, not crash loop:
+	- `WeatherService`: returns `unavailable:<reason>` fallback
+	- `KnowledgeCardService`: local-first, optional remote override, fallback card
+- `GitHubService` uses token-aware private-data access and TTL cache.
+- External HTTP calls use explicit timeouts (8-12s in current services).
 
-## Development Environment
-- **Python**: 3.12 only; managed via `uv`
-- **Commands**: `uv sync` (install deps), `uv run` (execute), avoid `python -m venv` or `pip`
-- **Preview**: `uv run python preview.py` generates `preview.png` for layout validation
-- **Service Mode**: `sudo systemctl [start|stop|status] eink-dashboard.service` (runs [eink-dashboard.service](../scripts/systemd/eink-dashboard.service))
-- **Logging**: Check [docs/ai/instructions/](../docs/ai/instructions/) for quality gates, architectural rules, and refresh policy specifics
+## Developer Workflows
+- Environment: Python 3.12 via `uv` only.
+- Install/sync: `uv sync`
+- Preview image: `uv run python main.py --preview` (or `uv run python preview.py` compatibility wrapper)
+- Hardware run: `uv run python main.py`
+- Long hardware soak: `scripts/hardware_24h_test.sh --hours 24`
+- Systemd install/upgrade: `sudo bash scripts/systemd/install_service.sh`
+- Service ops: `sudo systemctl status eink-dashboard.service`, logs via `journalctl -u eink-dashboard.service -f`
 
-## Integration Points
-- **GitHub**: Requires API key for private repos; uses GitHub v3 REST; monthly contribution calendar + org stats [GitHubService](../src/services/github.py)
-- **Weather**: Open-Meteo (no key needed by default); supports location names or lat,long coords [WeatherService](../src/services/weather.py)
-- **System**: psutil for CPU/memory; load_level computed as 0-5 buckets [SystemService](../src/services/system.py)
-- **Knowledge Cards**: Local JSON + optional remote source; see [data/cards.json](../data/cards.json) [KnowledgeCardService](../src/services/posts.py)
+## Conventions in This Repo
+- Naming: `*Config`, `*Service`/`*Provider`, `*Panel`/`*Renderer`, `*Adapter`.
+- Module docstrings + typed signatures are standard; keep `from __future__ import annotations`.
+- UI work should be validated with preview image before hardware testing.
 
-## Testing & Validation
-- Static type checking via Pylance
-- Run preview frequently during UI changes to validate grayscale/layout before hardware test
-- Coordinate with existing systemd service when debugging hardware display
-
----
-See [docs/architecture-overview.md](../docs/architecture-overview.md) and instruction subdirectory for deeper context.
+## Integration Notes
+- GitHub: REST v3 + pagination + commit-stat aggregation (`src/services/github.py`).
+- Weather: Open-Meteo forecast + geocoding APIs (`src/services/weather.py`).
+- System metrics: parsed from `/proc/stat` and `/proc/meminfo` (not psutil).
+- Waveshare driver is optional at runtime; adapter supports simulation when hardware import fails.
