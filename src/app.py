@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 import logging
+import signal
 import time
 from dataclasses import dataclass
 from enum import Enum
+from types import FrameType
+from typing import TYPE_CHECKING, Any, Callable, TypeAlias
 
 from src.config import AppConfig
 from src.display.adapter import EPDAdapter, RefreshMode as DisplayRefreshMode
@@ -16,7 +20,14 @@ from src.services.github import GitHubService
 from src.services.posts import KnowledgeCardService
 from src.services.system import SystemService
 from src.services.weather import WeatherService
+from src.ui.lifecycle_renderer import LifecycleScreenRenderer
 from src.ui.renderer import DashboardRenderer
+
+if TYPE_CHECKING:
+    from src.domain.models import DashboardSnapshot
+
+
+SignalHandler: TypeAlias = Callable[[int, FrameType | None], Any] | int | signal.Handlers | None
 
 
 class RefreshMode(str, Enum):
@@ -92,6 +103,11 @@ class RefreshPolicy:
         self._partial_refresh_count += 1
         return RefreshDecision(mode=RefreshMode.PARTIAL, reason="regular_partial_refresh")
 
+    def mark_external_full_refresh(self) -> None:
+        """Sync policy state after a full refresh outside regular policy decisions."""
+
+        self._mark_full_refresh(time.monotonic())
+
     def _mark_full_refresh(self, now: float) -> None:
         """Reset full-refresh baseline and partial-refresh counter.
 
@@ -126,6 +142,10 @@ class DashboardApplication:
             github_username=config.github.username,
             github_organization=config.github.organization,
         )
+        self._lifecycle_renderer = LifecycleScreenRenderer(
+            width=config.screen.width,
+            height=config.screen.height,
+        )
         self._display = EPDAdapter(
             width=config.screen.width,
             height=config.screen.height,
@@ -139,6 +159,9 @@ class DashboardApplication:
         self._ghosting_tuning = self._build_ghosting_tuning(self._ghosting_mode)
         self._partial_streak = 0
         self._last_partial_bbox: tuple[int, int, int, int] | None = None
+        self._running = True
+        self._received_signal: int | None = None
+        self._previous_signal_handlers: dict[int, SignalHandler] = {}
         self._logger = logging.getLogger(self.__class__.__name__)
 
     def run(self) -> None:
@@ -161,8 +184,38 @@ class DashboardApplication:
             self._logger.error("Failed to initialize display, exiting")
             return
 
+        self._install_signal_handlers()
+
         try:
-            while True:
+            self._show_startup_screen()
+            initial_snapshot = self._collect_initial_snapshot()
+            if initial_snapshot is None:
+                self._logger.info("startup_aborted reason=termination_requested")
+                return
+
+            initial_image = self._renderer.render(initial_snapshot)
+            initial_display_success = self._display.display(
+                initial_image,
+                mode=DisplayRefreshMode.FULL,
+            )
+            self._dirty_tracker.compare(initial_image)
+            self._policy.mark_external_full_refresh()
+
+            self._logger.info(
+                "initial_refresh display=%s tz=%s global=%s cpu_peak=%.1f cpu_avg=%.1f mem=%.1f%% repos=%s commits=%s size=%sx%s",
+                "ok" if initial_display_success else "failed",
+                initial_snapshot.date_time.timezone,
+                initial_snapshot.system.load_level,
+                initial_snapshot.system.cpu_peak_percent,
+                initial_snapshot.system.cpu_average_percent,
+                initial_snapshot.system.memory_percent,
+                initial_snapshot.github.organization_repo_count,
+                initial_snapshot.github.organization_monthly_commit_count,
+                initial_image.width,
+                initial_image.height,
+            )
+
+            while self._running:
                 decision = self._policy.decide()
                 snapshot = self._data_service.collect()
                 
@@ -177,7 +230,7 @@ class DashboardApplication:
                         "refresh skipped reason=no_visual_change tz=%s",
                         snapshot.date_time.timezone,
                     )
-                    time.sleep(self._policy.sleep_seconds)
+                    self._sleep_until_next_cycle(self._policy.sleep_seconds)
                     continue
                 
                 # Map refresh mode to display mode.
@@ -229,16 +282,111 @@ class DashboardApplication:
                     image.width,
                     image.height,
                 )
-                
-                time.sleep(self._policy.sleep_seconds)
+
+                self._sleep_until_next_cycle(self._policy.sleep_seconds)
                 
         except KeyboardInterrupt:
+            self._running = False
             self._logger.info("Received interrupt signal, shutting down...")
-        except Exception as e:
-            self._logger.error(f"Fatal error in main loop: {e}")
+        except Exception:
+            self._logger.exception("fatal_error_in_main_loop")
         finally:
-            self._logger.info("Putting display to sleep...")
-            self._display.sleep()
+            self._restore_signal_handlers()
+            self._shutdown_display()
+
+    def _install_signal_handlers(self) -> None:
+        """Install SIGINT/SIGTERM handlers for graceful shutdown screen rendering."""
+
+        handled_signals = [signal.SIGINT]
+        if hasattr(signal, "SIGTERM"):
+            handled_signals.append(signal.SIGTERM)
+
+        for sig in handled_signals:
+            self._previous_signal_handlers[sig] = signal.getsignal(sig)
+            signal.signal(sig, self._handle_termination_signal)
+
+    def _restore_signal_handlers(self) -> None:
+        """Restore signal handlers active before application startup."""
+
+        for sig, previous_handler in self._previous_signal_handlers.items():
+            signal.signal(sig, previous_handler)
+        self._previous_signal_handlers.clear()
+
+    def _handle_termination_signal(self, signum: int, _frame: FrameType | None) -> None:
+        """Signal callback that requests loop termination.
+
+        Args:
+            signum: Received signal number.
+            _frame: Current frame object supplied by signal module.
+        """
+
+        if not self._running:
+            return
+
+        self._running = False
+        self._received_signal = signum
+        self._logger.info("termination_signal_received signal=%s", signum)
+
+    def _show_startup_screen(self) -> None:
+        """Render and display startup screen before first dashboard snapshot."""
+
+        startup_image = self._lifecycle_renderer.render_startup()
+        startup_ok = self._display.display(startup_image, mode=DisplayRefreshMode.FULL)
+        self._logger.info("startup_screen_rendered display=%s", "ok" if startup_ok else "failed")
+
+    def _collect_initial_snapshot(self) -> DashboardSnapshot | None:
+        """Collect first dashboard snapshot in background while startup screen is visible."""
+
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="initial-data") as executor:
+            future = executor.submit(self._data_service.collect)
+            while self._running:
+                try:
+                    return future.result(timeout=0.2)
+                except TimeoutError:
+                    continue
+
+            future.cancel()
+            return None
+
+    def _sleep_until_next_cycle(self, seconds: int) -> None:
+        """Sleep in small slices to react quickly to termination signals."""
+
+        remaining = max(0.0, float(seconds))
+        while self._running and remaining > 0:
+            interval = min(0.2, remaining)
+            time.sleep(interval)
+            remaining -= interval
+
+    def _shutdown_display(self) -> None:
+        """Render shutdown screen, force full refresh, then put display to sleep."""
+
+        if not self._display.is_initialized:
+            return
+
+        self._logger.info("shutdown_begin signal=%s", self._received_signal)
+
+        shutdown_image = self._lifecycle_renderer.render_shutdown()
+        stage_ok = self._display.display(shutdown_image, mode=DisplayRefreshMode.PARTIAL)
+        self._logger.info(
+            "shutdown_screen_staged display=%s",
+            "ok" if stage_ok else "failed",
+        )
+
+        use_grayscale = self._config.screen.grayscale_levels == 4
+        reinit_ok = self._display.initialize(grayscale=use_grayscale)
+        self._logger.info(
+            "shutdown_reinitialize display=%s grayscale=%s",
+            "ok" if reinit_ok else "failed",
+            use_grayscale,
+        )
+
+        shutdown_ok = self._display.display(shutdown_image, mode=DisplayRefreshMode.FULL)
+
+        self._logger.info(
+            "shutdown_screen_rendered display=%s entering_sleep=true",
+            "ok" if shutdown_ok else "failed",
+        )
+        self._display.sleep()
 
     def _should_force_full_for_ghosting(
         self,
