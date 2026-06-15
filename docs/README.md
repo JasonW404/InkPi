@@ -4,9 +4,11 @@
 
 ## Documents
 
+- [Developer Guide](developer-guide.md)
+- [InkPi Modular Architecture](inkpi-architecture.md)
 - [Architecture Overview](architecture-overview.md)
 - [Development Plan](development-plan.md)
-- [AI Instructions](ai/instructions/README.md)
+- [AI Instructions](../.github/copilot-instructions.md)
 
 ## Scope
 

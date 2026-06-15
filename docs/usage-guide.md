@@ -1,5 +1,10 @@
 # 使用指南 - eInk Dashboard
 
+> `main.py` 的实机模式已由 InkPi 双服务替代。当前实机运行请使用
+> `inkpi-display` + `inkpi-core`，部署请运行
+> `sudo bash scripts/systemd/install_inkpi_services.sh`。本文其余内容主要说明
+> overview 页面的数据源配置。
+
 ## 快速开始
 
 ### 1. 环境配置
@@ -131,3 +136,12 @@ uv run python main.py
 - [ ] 添加脏区域追踪优化
 - [ ] 完善错误重试和超时策略
 - [ ] 添加单元测试
+
+## 测试
+
+项目使用 `pytest` 作为单元测试框架，覆盖运行时策略、服务层适配器注入和数据聚合主链路。
+
+```bash
+uv sync --extra dev
+uv run pytest -q
+```

@@ -1,9 +1,13 @@
 # Development Plan
 
+> InkPi 模块化改造的当前架构与交付状态见
+> [inkpi-architecture.md](inkpi-architecture.md)。下文保留原 overview
+> dashboard 的历史开发计划。
+
 ## Phase 0: Foundation (completed)
 
 - [x] 文档框架与架构说明
-- [x] 开发规范目录（`docs/ai/instructions/`）
+- [x] 开发规范整合（`.github/copilot-instructions.md`）
 - [x] Python 3.12 + uv 基线
 - [x] 配置模型与刷新策略骨架
 
@@ -56,7 +60,7 @@
 
 ## Operational Commands
 
-- Whenever `python` or `pip` commands are required, or any other Python related commands are required, you must use `uv` instead. Refer to [uv-guideline.md](ai/instructions/uv-guideline.md)
+- Whenever `python` or `pip` commands are required, or any other Python related commands are required, you must use `uv` instead. Refer to [copilot-instructions.md](../.github/copilot-instructions.md)
 - Setup baseline:
   - `uv python install 3.12`
   - `uv python pin 3.12`
