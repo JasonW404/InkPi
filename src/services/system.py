@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
+from pathlib import Path
 
 from src.domain.models import SystemStatus
 
@@ -86,6 +88,9 @@ class SystemService:
 	def _read_cpu_samples(self) -> list[_CpuTimes]:
 		"""Read per-core CPU counters from /proc/stat."""
 
+		if not Path("/proc/stat").exists():
+			return [_CpuTimes(total=1, idle=1) for _ in range(os.cpu_count() or 1)]
+
 		samples: list[_CpuTimes] = []
 		with open("/proc/stat", "r", encoding="utf-8") as stat_file:
 			for line in stat_file:
@@ -104,6 +109,14 @@ class SystemService:
 	def _read_memory_metrics(self) -> tuple[float, float, float]:
 		"""Read memory usage (GB and percent) from /proc/meminfo."""
 
+		if not Path("/proc/meminfo").exists():
+			try:
+				total_bytes = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+			except (OSError, ValueError):
+				total_bytes = 0
+			total_gb = total_bytes / (1024**3)
+			return 0.0, total_gb, 0.0
+
 		mem_kb: dict[str, int] = {}
 		with open("/proc/meminfo", "r", encoding="utf-8") as meminfo_file:
 			for line in meminfo_file:
@@ -119,4 +132,3 @@ class SystemService:
 		memory_percent = (used_kb / total_kb) * 100.0
 
 		return memory_used_gb, memory_total_gb, max(0.0, min(100.0, memory_percent))
-

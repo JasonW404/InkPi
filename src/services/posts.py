@@ -6,8 +6,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-import requests
-
+from src.adapters.contracts import KnowledgeCardRemoteClient
 from src.config import AppConfig
 from src.domain.models import KnowledgeCard
 
@@ -15,17 +14,18 @@ from src.domain.models import KnowledgeCard
 class KnowledgeCardService:
 	"""Load and select knowledge cards for dashboard rendering."""
 
-	def __init__(self, config: AppConfig) -> None:
+	def __init__(self, config: AppConfig, remote_adapter: KnowledgeCardRemoteClient) -> None:
 		"""Store card source configuration.
 
 		Args:
 			config: Application configuration.
+			remote_adapter: Remote knowledge card integration adapter.
 		"""
 
 		self._local_file = Path(config.knowledge_card.local_file)
 		self._remote_enabled = config.knowledge_card.remote_enabled
 		self._remote_url = config.knowledge_card.remote_url
-		self._timeout_seconds = 8
+		self._remote_adapter = remote_adapter
 
 	def get_current(self) -> KnowledgeCard:
 		"""Return selected card from local-first hybrid sources."""
@@ -59,11 +59,8 @@ class KnowledgeCardService:
 	def _load_remote_cards(self) -> list[dict[str, str]]:
 		"""Load cards from remote JSON endpoint."""
 
-		try:
-			response = requests.get(self._remote_url, timeout=self._timeout_seconds)
-			response.raise_for_status()
-			payload = response.json()
-		except requests.RequestException:
+		payload = self._remote_adapter.fetch_cards(self._remote_url)
+		if payload is None:
 			return []
 		return self._normalize_cards(payload)
 
