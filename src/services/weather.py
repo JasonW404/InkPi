@@ -31,7 +31,7 @@ class WeatherService:
 		self._cached_coordinates: tuple[float, float] | None = None
 		self._cached_weather: WeatherInfo | None = None
 		self._cached_weather_monotonic: float = 0.0
-		self._weather_cache_ttl_seconds = 180
+		self._weather_cache_ttl_seconds = 15
 
 	def get_current(self) -> WeatherInfo:
 		"""Fetch current weather information.

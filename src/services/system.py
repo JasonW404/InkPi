@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import time
 
 from src.domain.models import SystemStatus
 
@@ -28,6 +29,9 @@ class SystemService:
 		"""Initialize internal state for CPU delta sampling."""
 
 		self._previous_cpu_samples: list[_CpuTimes] | None = None
+		self._cached_status: SystemStatus | None = None
+		self._cached_monotonic: float = 0.0
+		self._cache_ttl_seconds = 15
 
 	def get_current(self) -> SystemStatus:
 		"""Read current CPU/memory load and map to global level.
@@ -35,6 +39,13 @@ class SystemService:
 		Returns:
 			System status with CPU, memory and global load metrics.
 		"""
+
+		now_mono = time.monotonic()
+		if (
+			self._cached_status is not None
+			and now_mono - self._cached_monotonic < self._cache_ttl_seconds
+		):
+			return self._cached_status
 
 		cpu_per_core = self._read_cpu_per_core_percent()
 		cpu_average = sum(cpu_per_core) / len(cpu_per_core) if cpu_per_core else 0.0
@@ -52,7 +63,7 @@ class SystemService:
 		)
 		load_level = min(5, max(0, int(global_load_percent // 20)))
 
-		return SystemStatus(
+		status = SystemStatus(
 			cpu_average_percent=cpu_average,
 			cpu_peak_percent=cpu_peak,
 			cpu_per_core_percent=cpu_per_core,
@@ -62,6 +73,9 @@ class SystemService:
 			global_load_percent=global_load_percent,
 			load_level=load_level,
 		)
+		self._cached_status = status
+		self._cached_monotonic = now_mono
+		return status
 
 	def _read_cpu_per_core_percent(self) -> list[float]:
 		"""Read per-core CPU usage percent using /proc/stat deltas."""

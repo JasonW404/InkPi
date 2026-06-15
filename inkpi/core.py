@@ -120,7 +120,7 @@ def build_core(
         controller,
         DisplayClient(display_socket),
         management,
-        refresh_seconds=int(os.getenv("INKPI_REFRESH_SECONDS", "60")),
+        refresh_seconds=int(os.getenv("INKPI_REFRESH_SECONDS", "15")),
     )
 
 

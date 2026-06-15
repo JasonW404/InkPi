@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from importlib.metadata import version as pkg_version
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -164,21 +165,23 @@ class SidebarPanel:
 
         y += TEXT_LINE_HEIGHT + 4
 
-        bar_count = 8
-        bar_width = 18
-        bar_spacing = 4
-        bar_height = 14
-        filled_bars = min(bar_count, max(0, round((system.global_load_percent / 100.0) * bar_count)))
+        bar_height = 16
+        bar_width = self._width - 2 * MARGIN
+        load = max(0, min(100, system.global_load_percent))
 
-        for index in range(bar_count):
-            fill_color = GRAY_BLACK if index < filled_bars else GRAY_LIGHT
-            bar_x = MARGIN + index * (bar_width + bar_spacing)
+        draw_rect(
+            image,
+            (MARGIN, y, MARGIN + bar_width, y + bar_height),
+            fill=None,
+            outline=GRAY_MID,
+            width=1,
+        )
+        fill_width = int(bar_width * load / 100)
+        if fill_width > 0:
             draw_rect(
                 image,
-                (bar_x, y, bar_x + bar_width, y + bar_height),
-                fill=fill_color,
-                outline=GRAY_MID,
-                width=1,
+                (MARGIN, y, MARGIN + fill_width, y + bar_height),
+                fill=GRAY_BLACK,
             )
 
         y += bar_height + 6
@@ -201,6 +204,18 @@ class SidebarPanel:
 
         ip_text = network.ip_address if network.ip_address else "No IP"
         draw_text(image, (MARGIN, y), ip_text, fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
+
+        version_text = f"InkPi v{_inkpi_version()}"
+        version_font = self._load_font(FONT_SIZE_SMALL)
+        draw = ImageDraw.Draw(image)
+        version_w = draw.textbbox((0, 0), version_text, font=version_font)[2]
+        draw_text(
+            image,
+            (self._width - MARGIN - version_w, self._height - MARGIN - FONT_SIZE_SMALL),
+            version_text,
+            fill=GRAY_LIGHT,
+            font_size=FONT_SIZE_SMALL,
+        )
 
         return image
 
@@ -231,3 +246,12 @@ class SidebarPanel:
             except OSError:
                 continue
         return cast(ImageFont.ImageFont, ImageFont.load_default())
+
+
+def _inkpi_version() -> str:
+    """Return installed InkPi package version, or 'dev' if unavailable."""
+
+    try:
+        return pkg_version("inkpi")
+    except Exception:  # noqa: BLE001
+        return "dev"

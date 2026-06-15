@@ -33,7 +33,7 @@ class GitHubService:
 		self._logger = logging.getLogger(self.__class__.__name__)
 		self._cached_monthly_stats: GitHubMonthlyStats | None = None
 		self._cached_monthly_stats_monotonic: float = 0.0
-		self._stats_cache_ttl_seconds = 300
+		self._stats_cache_ttl_seconds = 3600
 
 	def get_monthly_stats(self) -> GitHubMonthlyStats:
 		"""Collect current-month GitHub metrics.

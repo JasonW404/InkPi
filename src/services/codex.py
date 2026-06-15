@@ -24,58 +24,54 @@ class CodexCollectorError(RuntimeError):
 class CodexUsageService:
     """Collect Codex CLI subscription usage via JSON-RPC app-server protocol."""
 
+    def __init__(self) -> None:
+        self._cached_usage: CodexUsageInfo | None = None
+        self._cached_monotonic: float = 0.0
+        self._cache_ttl_seconds = 60
+
     def get_current(self) -> CodexUsageInfo:
+        now_mono = time.monotonic()
+        if (
+            self._cached_usage is not None
+            and now_mono - self._cached_monotonic < self._cache_ttl_seconds
+        ):
+            return self._cached_usage
+
         _logger.info("Starting Codex usage collection")
         try:
-            return self._collect_live()
+            result = self._collect_live()
         except FileNotFoundError as error:
             _logger.error(
                 "Codex usage collection failed: binary_missing – %s",
                 error,
                 exc_info=True,
             )
-            return CodexUsageInfo(
-                ok=False,
-                plan="UNAVAILABLE",
-                windows=[],
-                error=str(error),
-            )
+            result = CodexUsageInfo(ok=False, plan="UNAVAILABLE", windows=[], error=str(error))
         except json.JSONDecodeError as error:
             _logger.error(
                 "Codex usage collection failed: protocol_error – %s",
                 error,
                 exc_info=True,
             )
-            return CodexUsageInfo(
-                ok=False,
-                plan="UNAVAILABLE",
-                windows=[],
-                error=str(error),
-            )
+            result = CodexUsageInfo(ok=False, plan="UNAVAILABLE", windows=[], error=str(error))
         except CodexCollectorError as error:
             _logger.error(
                 "Codex usage collection failed: rpc_error – %s",
                 error,
                 exc_info=True,
             )
-            return CodexUsageInfo(
-                ok=False,
-                plan="UNAVAILABLE",
-                windows=[],
-                error=str(error),
-            )
+            result = CodexUsageInfo(ok=False, plan="UNAVAILABLE", windows=[], error=str(error))
         except Exception as error:
             _logger.error(
                 "Codex usage collection failed: unexpected_error – %s",
                 error,
                 exc_info=True,
             )
-            return CodexUsageInfo(
-                ok=False,
-                plan="UNAVAILABLE",
-                windows=[],
-                error=str(error),
-            )
+            result = CodexUsageInfo(ok=False, plan="UNAVAILABLE", windows=[], error=str(error))
+
+        self._cached_usage = result
+        self._cached_monotonic = now_mono
+        return result
 
     def _collect_live(self) -> CodexUsageInfo:
         executable = self._find_codex_binary()
