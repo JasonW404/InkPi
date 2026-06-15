@@ -95,17 +95,17 @@ class GitHubService:
 		month_start: date,
 		repos: list[str],
 	) -> list[GitHubContributionDay]:
-		"""Fetch user commit counts for current month via search commits API.
+		"""Fetch user commit counts across org repos, extra repos, and personal repos.
 
-		Falls back to PushEvents and org-repo commits when the search API is
-		not available on the adapter.
+		Checks both authored commits (GitHub login match) and co-authored-by
+		trailers in commit messages.
 
 		Args:
 			month_start: First day of month in UTC.
 			repos: Organization repository names.
 
 		Returns:
-			Per-day commit counts from available sources.
+			Per-day commit counts from all sources.
 		"""
 
 		if not self._username:
@@ -113,16 +113,47 @@ class GitHubService:
 
 		since = datetime.combine(month_start, datetime.min.time(), tzinfo=UTC).isoformat()
 		until = datetime.now(UTC).isoformat()
+		commit_counter: Counter[date] = Counter()
+		seen_shas: set[str] = set()
 
-		search_fn = getattr(self._api, "search_user_commits", None)
-		if search_fn and self._commit_email:
-			try:
-				items = search_fn(self._commit_email, since, until)
-				return self._parse_search_commit_days(items, month_start)
-			except Exception:
-				self._logger.warning("github_search_commits_failed falling_back_to_events")
+		all_repos: list[tuple[str, str]] = []
+		if self._organization and repos:
+			all_repos.extend((self._organization, r) for r in repos)
+		for extra_repo in self._extra_repos:
+			parts = extra_repo.split("/", 1)
+			if len(parts) == 2:
+				all_repos.append((parts[0], parts[1]))
 
-		return self._fetch_user_monthly_commit_days_fallback(month_start, repos)
+		for org, repo_name in all_repos:
+			commits = self._api.fetch_repo_commits(
+				organization=org,
+				repo_name=repo_name,
+				since=since,
+				until=until,
+			)
+			for commit in commits:
+				sha = commit.get("sha")
+				if not isinstance(sha, str) or not sha or sha in seen_shas:
+					continue
+				if not self._is_user_commit(commit):
+					continue
+				seen_shas.add(sha)
+				commit_date_raw = ((commit.get("commit") or {}).get("author") or {}).get("date")
+				if not isinstance(commit_date_raw, str) or not commit_date_raw:
+					continue
+				try:
+					commit_day = datetime.fromisoformat(
+						commit_date_raw.replace("Z", "+00:00")
+					).date()
+				except ValueError:
+					continue
+				if commit_day >= month_start:
+					commit_counter[commit_day] += 1
+
+		return [
+			GitHubContributionDay(day=day, commit_count=count)
+			for day, count in sorted(commit_counter.items(), key=lambda item: item[0])
+		]
 
 	def _parse_search_commit_days(
 		self,
@@ -220,7 +251,7 @@ class GitHubService:
 		month_start: date,
 		repos: list[str],
 	) -> int:
-		"""Fetch user monthly line changes from authored commits."""
+		"""Fetch user monthly line changes from authored and co-authored commits."""
 
 		if not (self._api.has_token() and self._username):
 			return 0
@@ -236,9 +267,10 @@ class GitHubService:
 					repo_name=repo_name,
 					since=since,
 					until=until,
-					author=self._username,
 				)
 				for item in commits:
+					if not self._is_user_commit(item):
+						continue
 					sha = item.get("sha")
 					if not isinstance(sha, str) or not sha:
 						continue
@@ -258,9 +290,10 @@ class GitHubService:
 				repo_name=extra_name,
 				since=since,
 				until=until,
-				author=self._username,
 			)
 			for item in commits:
+				if not self._is_user_commit(item):
+					continue
 				sha = item.get("sha")
 				if not isinstance(sha, str) or not sha:
 					continue
@@ -308,8 +341,10 @@ class GitHubService:
 					since=since,
 					until=until,
 				)
-				total_commits += len(commits)
 				for commit in commits:
+					if not self._is_user_commit(commit):
+						continue
+					total_commits += 1
 					commit_sha = commit.get("sha")
 					if not isinstance(commit_sha, str) or not commit_sha:
 						continue
@@ -331,8 +366,10 @@ class GitHubService:
 				since=since,
 				until=until,
 			)
-			total_commits += len(commits)
 			for commit in commits:
+				if not self._is_user_commit(commit):
+					continue
+				total_commits += 1
 				commit_sha = commit.get("sha")
 				if not isinstance(commit_sha, str) or not commit_sha:
 					continue
@@ -446,4 +483,30 @@ class GitHubService:
 				commit_sha=commit_sha,
 			)
 		return 0, 0
+
+	def _is_user_commit(self, commit: dict[str, object]) -> bool:
+		"""Check if commit is authored or co-authored by the configured user."""
+
+		author = commit.get("author")
+		if isinstance(author, dict) and author.get("login") == self._username:
+			return True
+
+		message = (commit.get("commit") or {}).get("message", "")
+		if not isinstance(message, str):
+			return False
+
+		if "Co-authored-by:" not in message:
+			return False
+
+		emails_to_check = []
+		if self._commit_email:
+			emails_to_check.append(self._commit_email)
+		if self._username:
+			emails_to_check.append(f"{self._username}@users.noreply.github.com")
+
+		for email in emails_to_check:
+			if f"<{email}>" in message:
+				return True
+
+		return False
 

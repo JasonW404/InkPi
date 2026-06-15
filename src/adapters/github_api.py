@@ -206,8 +206,10 @@ class GitHubApiAdapter:
         page = 1
 
         while True:
+            since_date = since[:10]
+            until_date = until[:10]
             params: dict[str, object] = {
-                "q": f"author-email:{email} committer-date:{since}..{until}",
+                "q": f"author-email:{email} committer-date:{since_date}..{until_date}",
                 "per_page": 100,
                 "page": page,
             }

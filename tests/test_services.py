@@ -65,6 +65,7 @@ class FakeGitHubAdapter:
         return [
             {
                 "sha": "sha-1",
+                "author": {"login": "tester"},
                 "commit": {"author": {"date": "2026-02-10T00:00:00Z"}},
             }
         ]
