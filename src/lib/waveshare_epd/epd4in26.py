@@ -398,29 +398,33 @@ class EPD:
 
         self.TurnOnDisplay_Fast()
 
-    def display_Partial(self, Image):
-        
-        # Reset
-        self.reset()
+    def display_Partial(self, Image, Old_Image=None):
 
         self.send_command(0x18) #BorderWavefrom
         self.send_data(0x80)
 
-        self.send_command(0x3C) #BorderWavefrom
+        self.send_command(0x3C) #Border setting
         self.send_data(0x80)
 
-        self.send_command(0x01)   #      drive output control    
-        self.send_data((self.height-1)%256) #  Y  
-        self.send_data((self.height-1)//256) #  Y 
+        self.send_command(0x01)   #      drive output control
+        self.send_data((self.height-1)%256) #  Y
+        self.send_data((self.height-1)//256) #  Y
 
         self.send_command(0x11)        #    data  entry  mode
-        self.send_data(0x01)           #       X-mode  x+ y-    
+        self.send_data(0x01)           #       X-mode  x+ y-
 
         self.SetWindow(0, self.height-1, self.width-1, 0)
 
         self.SetCursor(0, 0)
 
-        self.send_command(0x24)   #Write Black and White image to RAM
+        # RED RAM (0x26) holds the previous frame as the diff baseline.
+        # Without a correct baseline the controller cannot compute clean
+        # pixel transitions and ghosting accumulates.
+        if Old_Image is not None:
+            self.send_command(0x26)
+            self.send_data2(Old_Image)
+
+        self.send_command(0x24)
         self.send_data2(Image)
 
         self.TurnOnDisplay_Part()

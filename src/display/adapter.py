@@ -46,6 +46,7 @@ class EPDAdapter:
         self._initialized = False
         self._grayscale_enabled = True
         self._last_refresh_mode: RefreshMode | None = None
+        self._last_bw_buffer: list[int] | None = None
         
         # Try to import EPD driver.
         try:
@@ -160,50 +161,34 @@ class EPDAdapter:
                 raise RuntimeError("EPD reinitialization for full refresh failed")
     
     def _display_full(self, image: Image.Image) -> bool:
-        """Perform full refresh display.
-        
-        Args:
-            image: PIL Image in grayscale mode.
-        
-        Returns:
-            True if succeeded.
-        """
         if self._epd is None:
             self._logger.error("EPD instance not available")
             return False
-        
+
         self._logger.info("Performing full 4-grayscale refresh...")
-        
-        # Convert PIL image to EPD buffer.
+
         buffer = self._epd.getbuffer_4Gray(image)
-        
-        # Display with 4-gray mode.
         self._epd.display_4Gray(buffer)
-        
+
+        mono_image = self._prepare_partial_image(image)
+        self._last_bw_buffer = self._epd.getbuffer(mono_image)
+
         self._logger.info("Full refresh completed")
         return True
     
     def _display_partial(self, image: Image.Image) -> bool:
-        """Perform partial refresh display.
-        
-        Args:
-            image: PIL Image in grayscale mode.
-        
-        Returns:
-            True if succeeded.
-        """
         if self._epd is None:
             self._logger.error("EPD instance not available")
             return False
-        
+
         self._logger.info("Performing partial refresh...")
 
         partial_image = self._prepare_partial_image(image)
-        buffer = self._epd.getbuffer(partial_image)
-        
-        # Display with partial mode.
-        self._epd.display_Partial(buffer)
-        
+        new_buffer = self._epd.getbuffer(partial_image)
+
+        self._epd.display_Partial(new_buffer, self._last_bw_buffer)
+        self._last_bw_buffer = new_buffer
+
         self._logger.info("Partial refresh completed")
         return True
 

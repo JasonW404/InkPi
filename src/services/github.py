@@ -107,11 +107,28 @@ class GitHubService:
 
 		commit_counter: Counter[date] = Counter()
 
+		# Determine which repos belong to the org so we can avoid double-counting.
+		# Public PushEvents cover org repos too, so when org repo commits are
+		# available (Source 2), skip org repos in public events (Source 1).
+		org_repo_full_names: set[str] = set()
+		if self._api.has_token() and repos and self._organization:
+			org_repo_full_names = {
+				f"{self._organization}/{repo}" for repo in repos
+			}
+
 		# Source 1: public events (works without token, but private events can be redacted).
 		events = self._api.fetch_public_user_events(self._username)
 
 		for event in events:
 			if event.get("type") != "PushEvent":
+				continue
+			repo_info = event.get("repo")
+			repo_full_name = (
+				repo_info.get("name", "")
+				if isinstance(repo_info, dict)
+				else ""
+			)
+			if repo_full_name in org_repo_full_names:
 				continue
 			created_at = event.get("created_at", "")
 			try:
@@ -124,8 +141,8 @@ class GitHubService:
 			if commit_count > 0:
 				commit_counter[event_date] += commit_count
 
-		# Source 2: organization repo commits by author (captures private repo commits).
-		if self._api.has_token() and repos and self._organization:
+		# Source 2: organization repo commits by author (authoritative for org repos).
+		if org_repo_full_names:
 			org_counter = self._fetch_user_org_commit_days(
 				month_start=month_start,
 				repos=repos,

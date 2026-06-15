@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import requests
 
 
@@ -18,6 +20,7 @@ class GitHubApiAdapter:
 
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
+        self._logger = logging.getLogger(self.__class__.__name__)
 
     def has_token(self) -> bool:
         """Return True when token-based authentication is available."""
@@ -182,7 +185,7 @@ class GitHubApiAdapter:
     def _headers(self) -> dict[str, str]:
         """Build request headers with optional token."""
 
-        headers = {"Accept": "application/vnd.github+json"}
+        headers = {"Accept": "application/vnd.github.full+json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
         return headers
@@ -212,9 +215,38 @@ class GitHubApiAdapter:
                 timeout=self._timeout_seconds,
             )
             status_code = response.status_code
+
+            remaining = response.headers.get("X-RateLimit-Remaining")
+            if remaining is not None:
+                try:
+                    if int(remaining) < 10:
+                        self._logger.warning(
+                            "github_rate_limit_low url=%s remaining=%s",
+                            url,
+                            remaining,
+                        )
+                except ValueError:
+                    pass
+
             if status_code in {401, 403}:
+                self._logger.warning(
+                    "github_api_forbidden url=%s status=%s",
+                    url,
+                    status_code,
+                )
                 return None, status_code
+            if status_code != 200:
+                self._logger.warning(
+                    "github_api_non_200 url=%s status=%s",
+                    url,
+                    status_code,
+                )
             response.raise_for_status()
             return response.json(), status_code
-        except requests.RequestException:
+        except requests.RequestException as exc:
+            self._logger.error(
+                "github_api_request_failed url=%s error=%s",
+                url,
+                exc,
+            )
             return None, None
