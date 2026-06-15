@@ -1,63 +1,90 @@
-# eInk Dashboard
+# InkPi
 
-桌面墨水屏 Dashboard，目标硬件为树莓派 4B + 微雪 4.26inch（800x480）墨水屏。
+InkPi is a modular Raspberry Pi appliance for an 800x480 Waveshare 4.26-inch
+e-ink display. It preserves the original overview dashboard and adds a native
+Codex usage page, page rotation, local controls, and contracts for a future Pi
+management portal.
 
-## Current Status
+## Runtime Services
 
-- ✅ 已完成：配置系统、刷新策略、所有数据服务（GitHub/天气/系统/知识卡片）、UI渲染管道
-- 🚧 进行中：EPD硬件显示适配层、脏区域追踪优化
-- 📊 数据源：所有服务均已使用真实数据（GitHub API、Open-Meteo天气、系统负载、本地知识卡片）
+- `inkpi-core`: orchestrates page collection, rendering, rotation, configuration,
+  management facts, and dashboard controls.
+- `inkpi-display`: exclusively owns SPI/GPIO, panel lifecycle, frame history,
+  and every full/partial/skip refresh decision.
+- `inkpi-ctl`: queries and controls a running core service.
+- `inkpi-preview`: renders either built-in page without display hardware.
 
-## Key Features
+Dashboard pages submit complete grayscale frames. They cannot select a refresh
+mode or access the Waveshare driver.
 
-- **智能地理编码**：天气位置支持中英文地名（如"上海"、"Shanghai"）或精确坐标
-- **时区支持**：可配置显示本地时间（如Asia/Shanghai）
-- **灰度渲染**：4级灰度优化布局，适配4.26寸墨水屏可读性
-- **双触发刷新策略**：时间触发 OR 次数触发，灵活的全屏/局部刷新机制
+## Development
 
-## Quick Start
-
-### 1. 安装依赖
-
-```bash
-uv python install 3.12
-uv python pin 3.12
-uv venv
-uv sync
-```
-
-### 2. 配置环境变量
+InkPi uses Python 3.12 and `uv`.
 
 ```bash
-cp .env.example .env
-# 编辑 .env，设置你的GitHub用户名、组织名和天气位置
+uv sync --extra dev
+uv run pytest -q
+uv run inkpi-preview overview
+uv run inkpi-preview codex_usage
 ```
 
-### 3. 生成预览
+Pi-only GPIO/SPI dependencies are isolated from local development:
 
 ```bash
-export $(cat .env | xargs)
-uv run python preview.py
+uv sync --extra dev --extra rpi
 ```
 
-查看生成的 `preview.png` 确认布局效果。
+The overview page continues to use `.env` for secrets and source-specific
+settings. InkPi's non-secret runtime configuration is stored at
+`~/.config/inkpi/config.json`; see
+[`config/inkpi.example.json`](config/inkpi.example.json).
 
-### 4. 运行Dashboard
+## Run Locally
+
+Use temporary sockets when running outside systemd:
 
 ```bash
-uv run python main.py
+INKPI_DISPLAY_SOCKET=/tmp/inkpi-display.sock uv run inkpi-display
+INKPI_DISPLAY_SOCKET=/tmp/inkpi-display.sock \
+INKPI_CORE_SOCKET=/tmp/inkpi-core.sock \
+uv run inkpi-core
+uv run inkpi-ctl --socket /tmp/inkpi-core.sock pages
 ```
 
-详细配置说明请查看 [使用指南](docs/usage-guide.md)。
+## Raspberry Pi Deployment
 
-## Documentation
+Install both system services from the repository:
 
-- 快速上手：[docs/usage-guide.md](docs/usage-guide.md)
-- 架构设计：[docs/architecture-overview.md](docs/architecture-overview.md)
-- 开发计划：[docs/development-plan.md](docs/development-plan.md)
-- AI协作规范：[docs/ai/instructions/README.md](docs/ai/instructions/README.md)
+```bash
+uv sync --extra rpi
+sudo bash scripts/systemd/install_inkpi_services.sh
+systemctl status inkpi-display.service inkpi-core.service
+```
 
-## Environment Rule
+The installer disables the legacy `eink-dashboard.service` so only
+`inkpi-display` can own the physical panel.
 
-- Python 虚拟环境必须使用 `uv venv` 创建和管理。
-- 不使用 `python -m venv`、`virtualenv` 或其他工具创建本项目环境。
+## Built-In Pages
+
+- `overview`: weather, system load, knowledge card, and GitHub statistics.
+- `codex_usage`: native PIL rendering of Codex subscription usage. Live data
+  requires an installed and logged-in Codex CLI on the Pi.
+
+Enable or disable pages through the local core contract:
+
+```bash
+uv run inkpi-ctl pages
+uv run inkpi-ctl page codex_usage disable
+uv run inkpi-ctl page codex_usage enable
+```
+
+At least one page must remain enabled.
+
+## Architecture
+
+See [docs/inkpi-architecture.md](docs/inkpi-architecture.md) for module
+ownership, contracts, refresh strategy, and future management integration.
+
+Development workflow and extension guidance live in
+[docs/developer-guide.md](docs/developer-guide.md). Contributors and agents
+must follow [AGENTS.md](AGENTS.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
