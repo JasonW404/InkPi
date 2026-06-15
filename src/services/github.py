@@ -124,36 +124,90 @@ class GitHubService:
 			if len(parts) == 2:
 				all_repos.append((parts[0], parts[1]))
 
-		for org, repo_name in all_repos:
+		org_repos: list[tuple[str, str]] = []
+		if self._organization and repos:
+			org_repos.extend((self._organization, r) for r in repos)
+
+		extra_repos: list[tuple[str, str]] = []
+		for extra_repo in self._extra_repos:
+			parts = extra_repo.split("/", 1)
+			if len(parts) == 2:
+				extra_repos.append((parts[0], parts[1]))
+
+		for org, repo_name in org_repos:
 			commits = self._api.fetch_repo_commits(
 				organization=org,
 				repo_name=repo_name,
 				since=since,
 				until=until,
 			)
-			for commit in commits:
-				sha = commit.get("sha")
-				if not isinstance(sha, str) or not sha or sha in seen_shas:
-					continue
-				if not self._is_user_commit(commit):
-					continue
-				seen_shas.add(sha)
-				commit_date_raw = ((commit.get("commit") or {}).get("author") or {}).get("date")
-				if not isinstance(commit_date_raw, str) or not commit_date_raw:
-					continue
-				try:
-					commit_day = datetime.fromisoformat(
-						commit_date_raw.replace("Z", "+00:00")
-					).date()
-				except ValueError:
-					continue
-				if commit_day >= month_start:
-					commit_counter[commit_day] += 1
+			self._collect_user_commit_days(commits, month_start, seen_shas, commit_counter)
+
+		for org, repo_name in extra_repos:
+			commits = self._fetch_commits_across_branches(org, repo_name, since, until)
+			self._collect_user_commit_days(commits, month_start, seen_shas, commit_counter)
 
 		return [
 			GitHubContributionDay(day=day, commit_count=count)
 			for day, count in sorted(commit_counter.items(), key=lambda item: item[0])
 		]
+
+	def _collect_user_commit_days(
+		self,
+		commits: list[dict[str, object]],
+		month_start: date,
+		seen_shas: set[str],
+		commit_counter: Counter[date],
+	) -> None:
+		for commit in commits:
+			sha = commit.get("sha")
+			if not isinstance(sha, str) or not sha or sha in seen_shas:
+				continue
+			if not self._is_user_commit(commit):
+				continue
+			seen_shas.add(sha)
+			commit_date_raw = ((commit.get("commit") or {}).get("author") or {}).get("date")
+			if not isinstance(commit_date_raw, str) or not commit_date_raw:
+				continue
+			try:
+				commit_day = datetime.fromisoformat(
+					commit_date_raw.replace("Z", "+00:00")
+				).date()
+			except ValueError:
+				continue
+			if commit_day >= month_start:
+				commit_counter[commit_day] += 1
+
+	def _fetch_commits_across_branches(
+		self,
+		org: str,
+		repo_name: str,
+		since: str,
+		until: str,
+	) -> list[dict[str, object]]:
+		branches_fn = getattr(self._api, "fetch_repo_branches", None)
+		if not branches_fn:
+			return self._api.fetch_repo_commits(
+				organization=org, repo_name=repo_name, since=since, until=until,
+			)
+
+		branches = branches_fn(org, repo_name)
+		if not branches:
+			return []
+
+		all_commits: list[dict[str, object]] = []
+		seen: set[str] = set()
+		for branch in branches:
+			commits = self._api.fetch_repo_commits(
+				organization=org, repo_name=repo_name,
+				since=since, until=until, sha=branch,
+			)
+			for commit in commits:
+				sha = commit.get("sha")
+				if isinstance(sha, str) and sha and sha not in seen:
+					seen.add(sha)
+					all_commits.append(commit)
+		return all_commits
 
 	def _parse_search_commit_days(
 		self,
@@ -285,12 +339,7 @@ class GitHubService:
 			if len(parts) != 2:
 				continue
 			extra_org, extra_name = parts
-			commits = self._api.fetch_repo_commits(
-				organization=extra_org,
-				repo_name=extra_name,
-				since=since,
-				until=until,
-			)
+			commits = self._fetch_commits_across_branches(extra_org, extra_name, since, until)
 			for item in commits:
 				if not self._is_user_commit(item):
 					continue
@@ -360,12 +409,7 @@ class GitHubService:
 			if len(parts) != 2:
 				continue
 			extra_org, extra_name = parts
-			commits = self._api.fetch_repo_commits(
-				organization=extra_org,
-				repo_name=extra_name,
-				since=since,
-				until=until,
-			)
+			commits = self._fetch_commits_across_branches(extra_org, extra_name, since, until)
 			for commit in commits:
 				if not self._is_user_commit(commit):
 					continue

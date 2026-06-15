@@ -133,6 +133,7 @@ class GitHubApiAdapter:
         since: str,
         until: str,
         author: str | None = None,
+        sha: str | None = None,
     ) -> list[dict[str, object]]:
         """Fetch commits for one repository in time range."""
 
@@ -147,6 +148,8 @@ class GitHubApiAdapter:
             }
             if author:
                 params["author"] = author
+            if sha:
+                params["sha"] = sha
 
             payload = self._get_json(
                 f"https://api.github.com/repos/{organization}/{repo_name}/commits",
@@ -159,6 +162,24 @@ class GitHubApiAdapter:
             page += 1
 
         return commits
+
+    def fetch_repo_branches(self, organization: str, repo_name: str) -> list[str]:
+        """Fetch branch names for a repository."""
+
+        branches: list[str] = []
+        page = 1
+        while True:
+            payload = self._get_json(
+                f"https://api.github.com/repos/{organization}/{repo_name}/branches",
+                params={"per_page": 100, "page": page},
+            )
+            if not isinstance(payload, list) or not payload:
+                break
+            for branch in payload:
+                if isinstance(branch, dict) and branch.get("name"):
+                    branches.append(branch["name"])
+            page += 1
+        return branches
 
     def fetch_commit_stats(
         self,

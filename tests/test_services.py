@@ -70,6 +70,9 @@ class FakeGitHubAdapter:
             }
         ]
 
+    def fetch_repo_branches(self, organization: str, repo_name: str) -> list[str]:
+        return ["main"]
+
     def fetch_commit_stats(
         self,
         organization: str,

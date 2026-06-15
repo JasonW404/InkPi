@@ -67,8 +67,14 @@ class GitHubApiClient(Protocol):
         since: str,
         until: str,
         author: str | None = None,
+        sha: str | None = None,
     ) -> list[dict[str, object]]:
         """Fetch repository commits in time range."""
+
+        ...
+
+    def fetch_repo_branches(self, organization: str, repo_name: str) -> list[str]:
+        """Fetch branch names for a repository."""
 
         ...
 
