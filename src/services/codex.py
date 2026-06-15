@@ -38,40 +38,46 @@ class CodexUsageService:
             return self._cached_usage
 
         _logger.info("Starting Codex usage collection")
-        try:
-            result = self._collect_live()
-        except FileNotFoundError as error:
-            _logger.error(
-                "Codex usage collection failed: binary_missing – %s",
-                error,
-                exc_info=True,
-            )
-            result = CodexUsageInfo(ok=False, plan="UNAVAILABLE", windows=[], error=str(error))
-        except json.JSONDecodeError as error:
-            _logger.error(
-                "Codex usage collection failed: protocol_error – %s",
-                error,
-                exc_info=True,
-            )
-            result = CodexUsageInfo(ok=False, plan="UNAVAILABLE", windows=[], error=str(error))
-        except CodexCollectorError as error:
-            _logger.error(
-                "Codex usage collection failed: rpc_error – %s",
-                error,
-                exc_info=True,
-            )
-            result = CodexUsageInfo(ok=False, plan="UNAVAILABLE", windows=[], error=str(error))
-        except Exception as error:
-            _logger.error(
-                "Codex usage collection failed: unexpected_error – %s",
-                error,
-                exc_info=True,
-            )
-            result = CodexUsageInfo(ok=False, plan="UNAVAILABLE", windows=[], error=str(error))
-
-        self._cached_usage = result
-        self._cached_monotonic = now_mono
-        return result
+        
+        for attempt in range(2):
+            try:
+                result = self._collect_live()
+                self._cached_usage = result
+                self._cached_monotonic = now_mono
+                return result
+            except FileNotFoundError as error:
+                _logger.error(
+                    "Codex usage collection failed: binary_missing – %s",
+                    error,
+                    exc_info=True,
+                )
+                break
+            except json.JSONDecodeError as error:
+                _logger.error(
+                    "Codex usage collection failed: protocol_error (attempt %d/2) – %s",
+                    attempt + 1,
+                    error,
+                    exc_info=True,
+                )
+            except CodexCollectorError as error:
+                _logger.error(
+                    "Codex usage collection failed: rpc_error (attempt %d/2) – %s",
+                    attempt + 1,
+                    error,
+                    exc_info=True,
+                )
+            except Exception as error:
+                _logger.error(
+                    "Codex usage collection failed: unexpected_error (attempt %d/2) – %s",
+                    attempt + 1,
+                    error,
+                    exc_info=True,
+                )
+            
+            if attempt == 0:
+                time.sleep(1)
+        
+        return CodexUsageInfo(ok=False, plan="UNAVAILABLE", windows=[], error="Collection failed after retries")
 
     def _collect_live(self) -> CodexUsageInfo:
         executable = self._find_codex_binary()
