@@ -17,3 +17,4 @@ wheels/
 
 # Runtime artifacts
 logs/
+.lgd-*

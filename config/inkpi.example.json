@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "dashboard": {
+    "rotation_interval_seconds": 300,
+    "pages": [
+      {
+        "id": "overview",
+        "enabled": true
+      },
+      {
+        "id": "codex_usage",
+        "enabled": true
+      }
+    ]
+  },
+  "display": {
+    "policy": "longevity",
+    "max_partial_refreshes": 5,
+    "meaningful_change_ratio": 0.0005,
+    "partial_change_ratio": 0.12
+  }
+}
