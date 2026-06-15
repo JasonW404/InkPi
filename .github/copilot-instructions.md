@@ -1,49 +1,59 @@
-# AI Coding Guidelines for eInk Dashboard
+# InkPi Engineering Guidelines
 
-## Project Snapshot
-- Raspberry Pi 4B + Waveshare 4.26" (800x480) grayscale dashboard.
+## Source Of Truth
 
-## Architecture You Must Preserve
-1. **Config layer**: `src/config.py` builds frozen config dataclasses from `.env` + env vars (`AppConfig.from_env()`).
-2. **Domain layer**: `src/domain/models.py` contains frozen data contracts shared across services and UI.
-3. **Service layer**: `src/services/contracts.py` defines provider Protocols; implementations return domain objects (no raw API payloads).
-4. **Aggregation**: `src/services/dashboard.py` uses `ThreadPoolExecutor` to fetch datetime/weather/github/card concurrently, then system metrics.
-5. **Rendering**: `src/ui/renderer.py` composes `SidebarPanel` + `KnowledgeCardPanel` + `GitHubPanel` into fixed 800x480 grayscale output.
-6. **Display/runtime**: `src/app.py` + `src/display/` run refresh policy, dirty-region detection, ghosting mitigation, and lifecycle screens.
+This file is the authoritative coding guide for the redesigned InkPi project.
+`docs/inkpi-architecture.md` explains the same boundaries for human readers.
 
-## Runtime Data Flow (critical)
-- `main.py` wires providers and starts preview (`preview()`) or hardware loop (`DashboardApplication.run()`).
-- `DashboardApplication` behavior to keep:
-	- startup screen -> initial snapshot -> forced full refresh baseline
-	- refresh policy by monotonic time + partial counter (`RefreshPolicy`)
-	- dirty check via `DirtyRegionTracker.compare()` before deciding display action
-	- ghosting override can upgrade partial decision to full (`_should_force_full_for_ghosting`)
-	- graceful SIGINT/SIGTERM shutdown screen then display sleep
+## Required Architecture
 
-## Service & Error Patterns (project-specific)
-- Keep dependency injection Protocol-typed in constructors (see `DashboardDataService`).
-- Provider failures should degrade, not crash loop:
-	- `WeatherService`: returns `unavailable:<reason>` fallback
-	- `KnowledgeCardService`: local-first, optional remote override, fallback card
-- `GitHubService` uses token-aware private-data access and TTL cache.
-- External HTTP calls use explicit timeouts (8-12s in current services).
+1. `inkpi-core` is the main orchestrator and configuration authority.
+2. `inkpi-display` is the only process allowed to access SPI/GPIO or choose
+   full, partial, or skipped refresh behavior.
+3. Dashboard pages collect data and render complete 800x480 grayscale images.
+   They must not import display drivers or request refresh modes.
+4. Management owns system/network facts and future Pi configuration controls.
+5. Cross-module and cross-process behavior uses typed contracts from
+   `inkpi/contracts.py`.
+6. Local service IPC uses versioned JSON over Unix sockets.
+7. Slow page collection/rendering must not block control/status requests.
 
-## Developer Workflows
-- Environment: Python 3.12 via `uv` only.
-- Install/sync: `uv sync`
-- Preview image: `uv run python main.py --preview` (or `uv run python preview.py` compatibility wrapper)
-- Hardware run: `uv run python main.py`
-- Long hardware soak: `scripts/hardware_24h_test.sh --hours 24`
-- Systemd install/upgrade: `sudo bash scripts/systemd/install_service.sh`
-- Service ops: `sudo systemctl status eink-dashboard.service`, logs via `journalctl -u eink-dashboard.service -f`
+The legacy `src/` package remains reusable during migration for providers,
+rendering panels, and the Waveshare adapter. New orchestration and ownership
+logic belongs under `inkpi/`.
 
-## Conventions in This Repo
-- Naming: `*Config`, `*Service`/`*Provider`, `*Panel`/`*Renderer`, `*Adapter`.
-- Module docstrings + typed signatures are standard; keep `from __future__ import annotations`.
-- UI work should be validated with preview image before hardware testing.
+## Display Rules
 
-## Integration Notes
-- GitHub: REST v3 + pagination + commit-stat aggregation (`src/services/github.py`).
-- Weather: Open-Meteo forecast + geocoding APIs (`src/services/weather.py`).
-- System metrics: parsed from `/proc/stat` and `/proc/meminfo` (not psutil).
-- Waveshare driver is optional at runtime; adapter supports simulation when hardware import fails.
+- Callers submit complete frames and semantic metadata only.
+- Dirty-region analysis is a refresh-decision input, not a rectangular transfer.
+- Page changes, grayscale changes, startup/recovery, and uncertain controller
+  state require full refresh.
+- Default maximum partial streak is five.
+- Failed refreshes make the next attempt a full recovery refresh.
+- The panel enters sleep during display-service shutdown.
+- Do not enable automatic sleep between refreshes until validated on hardware.
+
+## Dashboard And Management Rules
+
+- Pages implement the native page contract and register explicitly.
+- At least one page must remain enabled.
+- Page configuration mutations are validated, idempotent, and atomically saved.
+- Dashboard pages may consume management facts only through contracts.
+- Management may control dashboard state only through dashboard-control
+  contracts.
+- NetworkManager integration and privileged changes belong in a future narrow
+  helper, never in dashboard pages or the web portal process.
+
+## Developer Workflow
+
+- Use Python 3.12 and `uv`.
+- Local development: `uv sync --extra dev`.
+- Raspberry Pi environment: `uv sync --extra rpi`.
+- Tests: `uv run pytest -q`.
+- Compile check: `uv run python -m compileall -q inkpi src tests`.
+- Previews: `uv run inkpi-preview overview` and
+  `uv run inkpi-preview codex_usage`.
+- Never use `pip install`, `python -m venv`, or `virtualenv`.
+
+Pi-only packages must remain in the `rpi` optional dependency group so local
+development and tests do not require GPIO/SPI build tooling.
