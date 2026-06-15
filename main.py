@@ -1,4 +1,4 @@
-"""Program entrypoint for hardware mode and preview rendering."""
+"""Legacy compatibility entrypoint for overview preview rendering."""
 
 from __future__ import annotations
 
@@ -6,27 +6,8 @@ import argparse
 import logging
 from pathlib import Path
 
-from src.app import DashboardApplication
+from src.bootstrap import build_data_service, build_renderer
 from src.config import AppConfig
-from src.services.dashboard import DashboardDataService
-from src.services.datetime import DateTimeService
-from src.services.github import GitHubService
-from src.services.posts import KnowledgeCardService
-from src.services.system import SystemService
-from src.services.weather import WeatherService
-from src.ui.renderer import DashboardRenderer
-
-
-def _build_data_service(config: AppConfig) -> DashboardDataService:
-    """Build shared dashboard data service used by runtime and preview modes."""
-
-    return DashboardDataService(
-        date_time_provider=DateTimeService(config),
-        weather_provider=WeatherService(config),
-        system_provider=SystemService(),
-        github_provider=GitHubService(config),
-        card_provider=KnowledgeCardService(config),
-    )
 
 
 def preview(output_path: str = "preview.png") -> Path:
@@ -35,13 +16,10 @@ def preview(output_path: str = "preview.png") -> Path:
     logger = logging.getLogger(__name__)
     config = AppConfig.from_env()
 
-    data_service = _build_data_service(config)
+    data_service = build_data_service(config)
     snapshot = data_service.collect()
 
-    renderer = DashboardRenderer(
-        github_username=config.github.username,
-        github_organization=config.github.organization,
-    )
+    renderer = build_renderer(config)
     image = renderer.render(snapshot)
 
     target = Path(output_path)
@@ -63,17 +41,18 @@ def preview(output_path: str = "preview.png") -> Path:
 
 
 def run_hardware() -> None:
-    """Run dashboard in hardware/epd mode."""
+    """Reject the retired monolithic hardware runtime."""
 
-    config = AppConfig.from_env()
-    app = DashboardApplication(config)
-    app.run()
+    raise SystemExit(
+        "Direct hardware mode was retired by InkPi. "
+        "Run `inkpi-display` and `inkpi-core`, or install the systemd services."
+    )
 
 
 def main() -> None:
     """Parse startup args and run in hardware mode (default) or preview mode."""
 
-    parser = argparse.ArgumentParser(description="eInk Dashboard entrypoint")
+    parser = argparse.ArgumentParser(description="Legacy InkPi overview preview entrypoint")
     parser.add_argument(
         "--preview",
         nargs="?",
