@@ -98,7 +98,6 @@ class CodexUsageService:
             limits_result = self._request(process, 2, "account/rateLimits/read")
             account_result = self._request(process, 3, "account/read")
         finally:
-            self._drain_stderr(process)
             process.terminate()
             try:
                 process.wait(timeout=1)
@@ -106,6 +105,7 @@ class CodexUsageService:
             except subprocess.TimeoutExpired:
                 process.kill()
                 _logger.warning("Codex subprocess pid=%s required SIGKILL after terminate timeout", process.pid)
+            self._drain_stderr(process)
 
         limits = limits_result.get("rateLimits", limits_result)
         account = account_result.get("account") or {}
