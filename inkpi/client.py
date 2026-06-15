@@ -1,0 +1,48 @@
+"""Typed client used by the future admin service and local integrations."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from inkpi.contracts import (
+    DashboardConfigResult,
+    DashboardStatus,
+    NetworkStatus,
+    PageStatus,
+    SystemStatus,
+)
+from inkpi.ipc import request
+
+DEFAULT_CORE_SOCKET = Path(os.getenv("INKPI_CORE_SOCKET", "/run/inkpi-core/core.sock"))
+
+
+class InkPiClient:
+    """Typed dashboard-control and management-data client."""
+
+    def __init__(self, socket_path: str | Path = DEFAULT_CORE_SOCKET) -> None:
+        self._socket_path = socket_path
+
+    def get_pages(self) -> list[PageStatus]:
+        payload = request(self._socket_path, "get_pages")
+        return [PageStatus(**item) for item in payload["pages"]]
+
+    def set_page_enabled(self, page_id: str, enabled: bool) -> DashboardConfigResult:
+        return DashboardConfigResult(
+            **request(
+                self._socket_path,
+                "set_page_enabled",
+                {"page_id": page_id, "enabled": enabled},
+            )
+        )
+
+    def get_status(self) -> DashboardStatus:
+        payload = request(self._socket_path, "get_dashboard_status")
+        payload["pages"] = [PageStatus(**item) for item in payload["pages"]]
+        return DashboardStatus(**payload)
+
+    def get_system_status(self) -> SystemStatus:
+        return SystemStatus(**request(self._socket_path, "get_system_status"))
+
+    def get_network_status(self) -> NetworkStatus:
+        return NetworkStatus(**request(self._socket_path, "get_network_status"))
