@@ -7,7 +7,7 @@ variables to strongly typed dataclasses.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -26,6 +26,14 @@ def _get_int(name: str, default: int) -> int:
 	if value is None:
 		return default
 	return int(value)
+
+
+def _parse_extra_repos(raw: str) -> list[str]:
+	"""Parse comma-separated extra repository list from environment."""
+
+	if not raw:
+		return []
+	return [r.strip() for r in raw.split(",") if r.strip()]
 
 
 def _load_dotenv_file(path: str = ".env") -> None:
@@ -80,8 +88,10 @@ class GitHubConfig:
 	"""
 
 	username: str = "JasonW404"
-	organization: str = "JasonW404-HW"
+	organization: str = "ModelEngine-Group"
 	api_key: str = ""
+	commit_email: str = ""
+	extra_repos: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -155,6 +165,8 @@ class AppConfig:
 				username=os.getenv("EINK_GITHUB_USERNAME") or GitHubConfig.username,
 				organization=os.getenv("EINK_GITHUB_ORG") or GitHubConfig.organization,
 				api_key=os.getenv("EINK_GITHUB_API_KEY") or os.getenv("EINK_GITHUB_TOKEN") or GitHubConfig.api_key,
+				commit_email=os.getenv("EINK_GITHUB_COMMIT_EMAIL", ""),
+				extra_repos=_parse_extra_repos(os.getenv("EINK_GITHUB_EXTRA_REPOS", "")),
 			),
 			weather=WeatherConfig(
 				location=os.getenv("EINK_WEATHER_LOCATION", ""),

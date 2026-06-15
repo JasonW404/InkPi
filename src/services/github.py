@@ -34,6 +34,8 @@ class GitHubService:
 		self._cached_monthly_stats: GitHubMonthlyStats | None = None
 		self._cached_monthly_stats_monotonic: float = 0.0
 		self._stats_cache_ttl_seconds = 3600
+		self._extra_repos = config.github.extra_repos
+		self._commit_email = config.github.commit_email
 
 	def get_monthly_stats(self) -> GitHubMonthlyStats:
 		"""Collect current-month GitHub metrics.
@@ -93,30 +95,89 @@ class GitHubService:
 		month_start: date,
 		repos: list[str],
 	) -> list[GitHubContributionDay]:
-		"""Fetch user push-event commit counts for current month.
+		"""Fetch user commit counts for current month via search commits API.
+
+		Falls back to PushEvents and org-repo commits when the search API is
+		not available on the adapter.
 
 		Args:
 			month_start: First day of month in UTC.
+			repos: Organization repository names.
 
 		Returns:
-			Per-day commit counts from available events.
+			Per-day commit counts from available sources.
 		"""
 
 		if not self._username:
 			return []
 
+		since = datetime.combine(month_start, datetime.min.time(), tzinfo=UTC).isoformat()
+		until = datetime.now(UTC).isoformat()
+
+		search_fn = getattr(self._api, "search_user_commits", None)
+		if search_fn and self._commit_email:
+			try:
+				items = search_fn(self._commit_email, since, until)
+				return self._parse_search_commit_days(items, month_start)
+			except Exception:
+				self._logger.warning("github_search_commits_failed falling_back_to_events")
+
+		return self._fetch_user_monthly_commit_days_fallback(month_start, repos)
+
+	def _parse_search_commit_days(
+		self,
+		items: list[dict[str, object]],
+		month_start: date,
+	) -> list[GitHubContributionDay]:
+		"""Deduplicate search results by SHA and aggregate per day."""
+
+		seen_shas: set[str] = set()
 		commit_counter: Counter[date] = Counter()
 
-		# Determine which repos belong to the org so we can avoid double-counting.
-		# Public PushEvents cover org repos too, so when org repo commits are
-		# available (Source 2), skip org repos in public events (Source 1).
+		for item in items:
+			sha = item.get("sha")
+			if not isinstance(sha, str) or not sha or sha in seen_shas:
+				continue
+			seen_shas.add(sha)
+
+			commit_obj = item.get("commit")
+			if not isinstance(commit_obj, dict):
+				continue
+			author_obj = commit_obj.get("author")
+			if not isinstance(author_obj, dict):
+				continue
+			commit_date_raw = author_obj.get("date")
+			if not isinstance(commit_date_raw, str) or not commit_date_raw:
+				continue
+			try:
+				commit_day = datetime.fromisoformat(
+					commit_date_raw.replace("Z", "+00:00")
+				).date()
+			except ValueError:
+				continue
+			if commit_day >= month_start:
+				commit_counter[commit_day] += 1
+
+		return [
+			GitHubContributionDay(day=day, commit_count=count)
+			for day, count in sorted(commit_counter.items(), key=lambda item: item[0])
+		]
+
+	def _fetch_user_monthly_commit_days_fallback(
+		self,
+		month_start: date,
+		repos: list[str],
+	) -> list[GitHubContributionDay]:
+		"""Legacy PushEvents + org-repo fallback for adapters without search."""
+
+		commit_counter: Counter[date] = Counter()
+
 		org_repo_full_names: set[str] = set()
 		if self._api.has_token() and repos and self._organization:
 			org_repo_full_names = {
 				f"{self._organization}/{repo}" for repo in repos
 			}
 
-		# Source 1: public events (works without token, but private events can be redacted).
 		events = self._api.fetch_public_user_events(self._username)
 
 		for event in events:
@@ -141,7 +202,6 @@ class GitHubService:
 			if commit_count > 0:
 				commit_counter[event_date] += commit_count
 
-		# Source 2: organization repo commits by author (authoritative for org repos).
 		if org_repo_full_names:
 			org_counter = self._fetch_user_org_commit_days(
 				month_start=month_start,
@@ -160,19 +220,42 @@ class GitHubService:
 		month_start: date,
 		repos: list[str],
 	) -> int:
-		"""Fetch user monthly line changes from authored commits in organization repos."""
+		"""Fetch user monthly line changes from authored commits."""
 
-		if not (self._api.has_token() and self._organization and self._username and repos):
+		if not (self._api.has_token() and self._username):
 			return 0
 
 		since = datetime.combine(month_start, datetime.min.time(), tzinfo=UTC).isoformat()
 		until = datetime.now(UTC).isoformat()
 		total_lines = 0
 
-		for repo_name in repos:
+		if self._organization and repos:
+			for repo_name in repos:
+				commits = self._api.fetch_repo_commits(
+					organization=self._organization,
+					repo_name=repo_name,
+					since=since,
+					until=until,
+					author=self._username,
+				)
+				for item in commits:
+					sha = item.get("sha")
+					if not isinstance(sha, str) or not sha:
+						continue
+					additions, deletions = self._fetch_commit_stats(
+						repo_name=repo_name,
+						commit_sha=sha,
+					)
+					total_lines += max(0, additions) + max(0, deletions)
+
+		for extra_repo in self._extra_repos:
+			parts = extra_repo.split("/", 1)
+			if len(parts) != 2:
+				continue
+			extra_org, extra_name = parts
 			commits = self._api.fetch_repo_commits(
-				organization=self._organization,
-				repo_name=repo_name,
+				organization=extra_org,
+				repo_name=extra_name,
 				since=since,
 				until=until,
 				author=self._username,
@@ -181,8 +264,8 @@ class GitHubService:
 				sha = item.get("sha")
 				if not isinstance(sha, str) or not sha:
 					continue
-				additions, deletions = self._fetch_commit_stats(
-					repo_name=repo_name,
+				additions, deletions = self._fetch_cross_commit_stats(
+					repo_full_name=extra_repo,
 					commit_sha=sha,
 				)
 				total_lines += max(0, additions) + max(0, deletions)
@@ -194,20 +277,21 @@ class GitHubService:
 		month_start: date,
 		repos: list[str] | None = None,
 	) -> tuple[int, int, int, int]:
-		"""Fetch organization repository and commit statistics.
+		"""Fetch organization and extra-repo commit statistics.
 
 		Args:
 			month_start: First day of month in UTC.
+			repos: Organization repository names.
 
 		Returns:
 			Tuple of repo count, commit count, additions, deletions.
 		"""
 
-		if not self._organization:
-			return 0, 0, 0, 0
+		repository_list = repos if repos is not None else (
+			self._fetch_org_repositories() if self._organization else []
+		)
 
-		repository_list = repos if repos is not None else self._fetch_org_repositories()
-		if not repository_list:
+		if not repository_list and not self._extra_repos:
 			return 0, 0, 0, 0
 
 		since = datetime.combine(month_start, datetime.min.time(), tzinfo=UTC).isoformat()
@@ -216,10 +300,34 @@ class GitHubService:
 		total_additions = 0
 		total_deletions = 0
 
-		for repo_name in repository_list:
+		if self._organization:
+			for repo_name in repository_list:
+				commits = self._api.fetch_repo_commits(
+					organization=self._organization,
+					repo_name=repo_name,
+					since=since,
+					until=until,
+				)
+				total_commits += len(commits)
+				for commit in commits:
+					commit_sha = commit.get("sha")
+					if not isinstance(commit_sha, str) or not commit_sha:
+						continue
+					additions, deletions = self._fetch_commit_stats(
+						repo_name=repo_name,
+						commit_sha=commit_sha,
+					)
+					total_additions += additions
+					total_deletions += deletions
+
+		for extra_repo in self._extra_repos:
+			parts = extra_repo.split("/", 1)
+			if len(parts) != 2:
+				continue
+			extra_org, extra_name = parts
 			commits = self._api.fetch_repo_commits(
-				organization=self._organization,
-				repo_name=repo_name,
+				organization=extra_org,
+				repo_name=extra_name,
 				since=since,
 				until=until,
 			)
@@ -228,14 +336,15 @@ class GitHubService:
 				commit_sha = commit.get("sha")
 				if not isinstance(commit_sha, str) or not commit_sha:
 					continue
-				additions, deletions = self._fetch_commit_stats(
-					repo_name=repo_name,
+				additions, deletions = self._fetch_cross_commit_stats(
+					repo_full_name=extra_repo,
 					commit_sha=commit_sha,
 				)
 				total_additions += additions
 				total_deletions += deletions
 
-		return len(repository_list), total_commits, total_additions, total_deletions
+		repo_count = len(repository_list) + len(self._extra_repos)
+		return repo_count, total_commits, total_additions, total_deletions
 
 	def _fetch_user_org_commit_days(
 		self,
@@ -318,4 +427,23 @@ class GitHubService:
 			repo_name=repo_name,
 			commit_sha=commit_sha,
 		)
+
+	def _fetch_cross_commit_stats(
+		self,
+		repo_full_name: str,
+		commit_sha: str,
+	) -> tuple[int, int]:
+		"""Fetch additions and deletions for a commit in any repository."""
+
+		cross_fn = getattr(self._api, "fetch_cross_repo_commit_stats", None)
+		if cross_fn:
+			return cross_fn(repo_full_name, commit_sha)
+		parts = repo_full_name.split("/", 1)
+		if len(parts) == 2:
+			return self._api.fetch_commit_stats(
+				organization=parts[0],
+				repo_name=parts[1],
+				commit_sha=commit_sha,
+			)
+		return 0, 0
 

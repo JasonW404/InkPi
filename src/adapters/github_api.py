@@ -182,10 +182,94 @@ class GitHubApiAdapter:
         except (ValueError, TypeError, AttributeError):
             return 0, 0
 
-    def _headers(self) -> dict[str, str]:
-        """Build request headers with optional token."""
+    def search_user_commits(
+        self,
+        email: str,
+        since: str,
+        until: str,
+    ) -> list[dict[str, object]]:
+        """Search commits by author email across all accessible repositories.
 
-        headers = {"Accept": "application/vnd.github.full+json"}
+        Uses the GitHub search commits API which requires the cloak-preview
+        accept header.
+
+        Args:
+            email: Author email address to search for.
+            since: ISO-8601 start of date range.
+            until: ISO-8601 end of date range.
+
+        Returns:
+            List of commit items from search results.
+        """
+
+        items: list[dict[str, object]] = []
+        page = 1
+
+        while True:
+            params: dict[str, object] = {
+                "q": f"author-email:{email} committer-date:{since}..{until}",
+                "per_page": 100,
+                "page": page,
+            }
+            payload = self._get_json(
+                "https://api.github.com/search/commits",
+                params=params,
+            )
+            if not isinstance(payload, dict):
+                break
+
+            page_items = payload.get("items", [])
+            if not isinstance(page_items, list) or not page_items:
+                break
+
+            items.extend(item for item in page_items if isinstance(item, dict))
+
+            if len(page_items) < 100:
+                break
+            page += 1
+
+        return items
+
+    def fetch_cross_repo_commit_stats(
+        self,
+        repo_full_name: str,
+        commit_sha: str,
+    ) -> tuple[int, int]:
+        """Fetch additions and deletions for a commit in any repository.
+
+        Args:
+            repo_full_name: Full repository name (e.g. ``owner/repo``).
+            commit_sha: Commit SHA to fetch stats for.
+
+        Returns:
+            Tuple of additions and deletions.
+        """
+
+        payload = self._get_json(
+            f"https://api.github.com/repos/{repo_full_name}/commits/{commit_sha}",
+        )
+        if not isinstance(payload, dict):
+            return 0, 0
+
+        try:
+            stats = payload.get("stats", {})
+            additions = int((stats or {}).get("additions", 0))
+            deletions = int((stats or {}).get("deletions", 0))
+            return additions, deletions
+        except (ValueError, TypeError, AttributeError):
+            return 0, 0
+
+    def _headers(self, url: str = "") -> dict[str, str]:
+        """Build request headers with optional token.
+
+        Args:
+            url: Request URL used to select endpoint-specific accept headers.
+        """
+
+        if "/search/commits" in url:
+            headers = {"Accept": "application/vnd.github.cloak-preview+json"}
+        else:
+            headers = {"Accept": "application/vnd.github.full+json"}
         if self._api_key:
             headers["Authorization"] = f"Bearer {self._api_key}"
         return headers
@@ -210,7 +294,7 @@ class GitHubApiAdapter:
         try:
             response = requests.get(
                 url,
-                headers=self._headers(),
+                headers=self._headers(url),
                 params=params,
                 timeout=self._timeout_seconds,
             )

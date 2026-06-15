@@ -81,3 +81,22 @@ class GitHubApiClient(Protocol):
         """Fetch commit additions/deletions."""
 
         ...
+
+    def search_user_commits(
+        self,
+        email: str,
+        since: str,
+        until: str,
+    ) -> list[dict[str, object]]:
+        """Search commits by author email across repositories."""
+
+        ...
+
+    def fetch_cross_repo_commit_stats(
+        self,
+        repo_full_name: str,
+        commit_sha: str,
+    ) -> tuple[int, int]:
+        """Fetch commit additions/deletions using full repository name."""
+
+        ...
