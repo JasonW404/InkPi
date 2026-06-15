@@ -71,6 +71,35 @@ class KnowledgeCard:
 
 
 @dataclass(frozen=True)
+class NetworkInfo:
+    """Current network connection state."""
+
+    connection_type: str  # "ethernet", "wifi", "unknown"
+    ssid: str | None
+    ip_address: str
+    online: bool
+
+
+@dataclass(frozen=True)
+class CodexUsageWindow:
+    """Single quota window inside a Codex usage response."""
+
+    label: str  # "5-HOUR WINDOW", "WEEKLY WINDOW"
+    remaining_percent: float
+    resets_at: str | None  # ISO timestamp or None
+
+
+@dataclass(frozen=True)
+class CodexUsageInfo:
+    """Aggregated Codex subscription usage payload."""
+
+    ok: bool
+    plan: str
+    windows: list[CodexUsageWindow]
+    error: str | None = None
+
+
+@dataclass(frozen=True)
 class DashboardSnapshot:
     """Aggregated dashboard data for one refresh cycle."""
 
@@ -78,5 +107,7 @@ class DashboardSnapshot:
     date_time: DateTimeInfo
     weather: WeatherInfo
     system: SystemStatus
+    network: NetworkInfo
     github: GitHubMonthlyStats
     card: KnowledgeCard
+    codex: CodexUsageInfo

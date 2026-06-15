@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import socket
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -40,11 +41,24 @@ class LocalManagementService:
             ]
         else:
             interfaces = [name for _, name in socket.if_nameindex() if name != "lo0"]
+
+        ethernet = any(name.startswith(("eth", "en")) for name in interfaces)
+        wifi = any(name.startswith(("wlan", "wl")) for name in interfaces)
+        if ethernet:
+            connection_type = "ethernet"
+        elif wifi:
+            connection_type = "wifi"
+        else:
+            connection_type = "unknown"
+
         return NetworkStatus(
             online=self._has_default_route(),
-            ethernet_connected=any(name.startswith(("eth", "en")) for name in interfaces),
-            wifi_connected=any(name.startswith(("wlan", "wl")) for name in interfaces),
+            ethernet_connected=ethernet,
+            wifi_connected=wifi,
             active_interfaces=interfaces,
+            ip_address=self._local_ip(),
+            wifi_ssid=self._wifi_ssid() if wifi else None,
+            connection_type=connection_type,
         )
 
     @staticmethod
@@ -60,6 +74,30 @@ class LocalManagementService:
             return (path / "operstate").read_text(encoding="utf-8").strip() == "up"
         except OSError:
             return False
+
+    @staticmethod
+    def _local_ip() -> str:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.connect(("8.8.8.8", 80))
+                return sock.getsockname()[0]
+        except OSError:
+            return ""
+
+    @staticmethod
+    def _wifi_ssid() -> str | None:
+        try:
+            result = subprocess.run(
+                ["iwgetid", "-r"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            pass
+        return None
 
     @staticmethod
     def _has_default_route() -> bool:

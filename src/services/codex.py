@@ -81,6 +81,11 @@ class CodexUsageService:
         executable = self._find_codex_binary()
         if not executable:
             raise CodexCollectorError("Codex CLI not found; install it and run `codex login`.")
+        env = os.environ.copy()
+        for var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+            val = os.getenv(var)
+            if val:
+                env[var] = val
         process = subprocess.Popen(
             [executable, "-s", "read-only", "-a", "untrusted", "app-server"],
             stdin=subprocess.PIPE,
@@ -88,6 +93,7 @@ class CodexUsageService:
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            env=env,
         )
         _logger.info("Spawned codex subprocess pid=%s", process.pid)
         try:

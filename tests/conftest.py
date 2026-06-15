@@ -17,9 +17,12 @@ from src.config import (
     WeatherConfig,
 )
 from src.domain.models import (
+    CodexUsageInfo,
+    CodexUsageWindow,
     DateTimeInfo,
     GitHubMonthlyStats,
     KnowledgeCard,
+    NetworkInfo,
     SystemStatus,
     WeatherInfo,
 )
@@ -110,4 +113,24 @@ def sample_card() -> KnowledgeCard:
         body="Body",
         source="test",
         updated_at=datetime.now(UTC),
+    )
+
+
+def sample_network() -> NetworkInfo:
+    return NetworkInfo(
+        connection_type="wifi",
+        ssid="TestNet",
+        ip_address="192.168.1.100",
+        online=True,
+    )
+
+
+def sample_codex() -> CodexUsageInfo:
+    return CodexUsageInfo(
+        ok=True,
+        plan="PRO",
+        windows=[
+            CodexUsageWindow("5-HOUR WINDOW", 78.0, "2026-06-15T14:00:00Z"),
+            CodexUsageWindow("WEEKLY WINDOW", 52.0, "2026-06-18T00:00:00Z"),
+        ],
     )

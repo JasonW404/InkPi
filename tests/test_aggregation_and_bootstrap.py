@@ -6,8 +6,10 @@ from src.services.dashboard import DashboardDataService
 from conftest import (
     make_config,
     sample_card,
+    sample_codex,
     sample_datetime,
     sample_github,
+    sample_network,
     sample_system,
     sample_weather,
 )
@@ -38,6 +40,16 @@ class CardProviderFake:
         return sample_card()
 
 
+class NetworkProviderFake:
+    def get_current(self):
+        return sample_network()
+
+
+class CodexProviderFake:
+    def get_current(self):
+        return sample_codex()
+
+
 def test_dashboard_data_service_collects_complete_snapshot() -> None:
     service = DashboardDataService(
         date_time_provider=DateTimeProviderFake(),
@@ -45,6 +57,8 @@ def test_dashboard_data_service_collects_complete_snapshot() -> None:
         system_provider=SystemProviderFake(),
         github_provider=GitHubProviderFake(),
         card_provider=CardProviderFake(),
+        network_provider=NetworkProviderFake(),
+        codex_provider=CodexProviderFake(),
     )
 
     snapshot = service.collect()
@@ -54,6 +68,8 @@ def test_dashboard_data_service_collects_complete_snapshot() -> None:
     assert snapshot.system.load_level == 1
     assert snapshot.github.organization_repo_count == 2
     assert snapshot.card.title == "Sample"
+    assert snapshot.network.connection_type == "wifi"
+    assert snapshot.codex.plan == "PRO"
 
 
 def test_bootstrap_build_data_service_returns_aggregator() -> None:

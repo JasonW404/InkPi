@@ -66,6 +66,11 @@ For display, service, or deployment changes, run a local two-service smoke test
 and then validate on `meta_pi`. Clearly report whether verification was
 simulation-only or used the physical panel.
 
+## Deployment and Real-World Testing
+
+- Use `ssh meta_pi` to access the target device.
+- Deploy with local `.env` file.
+
 ## Key References
 
 - [Developer Guide](docs/developer-guide.md)

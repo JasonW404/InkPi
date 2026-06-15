@@ -9,9 +9,11 @@ import time
 
 from src.domain.models import DashboardSnapshot
 from src.services.contracts import (
+    CodexUsageProvider,
     DateTimeProvider,
     GitHubProvider,
     KnowledgeCardProvider,
+    NetworkProvider,
     SystemStatusProvider,
     WeatherProvider,
 )
@@ -27,6 +29,8 @@ class DashboardDataService:
         system_provider: SystemStatusProvider,
         github_provider: GitHubProvider,
         card_provider: KnowledgeCardProvider,
+        network_provider: NetworkProvider,
+        codex_provider: CodexUsageProvider,
     ) -> None:
         """Create aggregator with provider dependencies.
 
@@ -36,6 +40,8 @@ class DashboardDataService:
             system_provider: System status provider.
             github_provider: GitHub statistics provider.
             card_provider: Knowledge card provider.
+            network_provider: Network information provider.
+            codex_provider: Codex usage provider.
         """
 
         self._date_time_provider = date_time_provider
@@ -43,6 +49,8 @@ class DashboardDataService:
         self._system_provider = system_provider
         self._github_provider = github_provider
         self._card_provider = card_provider
+        self._network_provider = network_provider
+        self._codex_provider = codex_provider
         self._logger = logging.getLogger(self.__class__.__name__)
 
     def collect(self) -> DashboardSnapshot:
@@ -54,16 +62,20 @@ class DashboardDataService:
 
         started = time.perf_counter()
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        with ThreadPoolExecutor(max_workers=6) as executor:
             date_time_future = executor.submit(self._date_time_provider.get_current)
             weather_future = executor.submit(self._weather_provider.get_current)
             github_future = executor.submit(self._github_provider.get_monthly_stats)
             card_future = executor.submit(self._card_provider.get_current)
+            network_future = executor.submit(self._network_provider.get_current)
+            codex_future = executor.submit(self._codex_provider.get_current)
 
             date_time_info = date_time_future.result()
             weather_info = weather_future.result()
             github_info = github_future.result()
             card_info = card_future.result()
+            network_info = network_future.result()
+            codex_info = codex_future.result()
 
         system_started = time.perf_counter()
         system_info = self._system_provider.get_current()
@@ -81,6 +93,8 @@ class DashboardDataService:
             date_time=date_time_info,
             weather=weather_info,
             system=system_info,
+            network=network_info,
             github=github_info,
             card=card_info,
+            codex=codex_info,
         )

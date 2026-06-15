@@ -9,7 +9,6 @@ from pathlib import Path
 from inkpi.config import load_config
 from inkpi.core import DEFAULT_CORE_SOCKET, run_core_service
 from inkpi.dashboard.controller import DashboardController
-from inkpi.dashboard.pages.codex_usage import CodexUsagePage
 from inkpi.dashboard.pages.overview import OverviewPage
 from inkpi.display.service import DEFAULT_SOCKET, run_display_service
 from inkpi.ipc import request
@@ -65,12 +64,12 @@ def control_main() -> None:
 
 def preview_main() -> None:
     parser = argparse.ArgumentParser(description="Render an InkPi page preview")
-    parser.add_argument("page", choices=["overview", "codex_usage"], default="overview", nargs="?")
+    parser.add_argument("page", choices=["overview"], default="overview", nargs="?")
     parser.add_argument("--output")
     parser.add_argument("--config")
     args = parser.parse_args()
     _logging()
-    pages = [OverviewPage(), CodexUsagePage()]
+    pages = [OverviewPage()]
     controller = DashboardController(pages, load_config(args.config))
     page = next(item for item in pages if item.page_id == args.page)
     image = page.render(page.collect())

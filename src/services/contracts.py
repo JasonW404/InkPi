@@ -5,9 +5,11 @@ from __future__ import annotations
 from typing import Protocol
 
 from src.domain.models import (
+    CodexUsageInfo,
     DateTimeInfo,
     GitHubMonthlyStats,
     KnowledgeCard,
+    NetworkInfo,
     SystemStatus,
     WeatherInfo,
 )
@@ -54,5 +56,23 @@ class KnowledgeCardProvider(Protocol):
 
     def get_current(self) -> KnowledgeCard:
         """Return currently selected knowledge card."""
+
+        ...
+
+
+class NetworkProvider(Protocol):
+    """Contract for network information providers."""
+
+    def get_current(self) -> NetworkInfo:
+        """Return current network connection state."""
+
+        ...
+
+
+class CodexUsageProvider(Protocol):
+    """Contract for Codex usage providers."""
+
+    def get_current(self) -> CodexUsageInfo:
+        """Return current Codex subscription usage."""
 
         ...

@@ -1,4 +1,4 @@
-"""Left sidebar panel for datetime, weather, and system status."""
+"""Left sidebar panel for weather, date, system status, and network."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from typing import cast
 from PIL import Image, ImageDraw, ImageFont
 
 from src.ui.constants import (
-    FONT_SIZE_LARGE,
     FONT_SIZE_NORMAL,
     FONT_SIZE_SMALL,
     FONT_SIZE_TITLE,
@@ -23,11 +22,11 @@ from src.ui.constants import (
 from src.ui.drawing import draw_rect, draw_text, truncate_text
 
 if TYPE_CHECKING:
-    from src.domain.models import DateTimeInfo, SystemStatus, WeatherInfo
+    from src.domain.models import DateTimeInfo, NetworkInfo, SystemStatus, WeatherInfo
 
 
 class SidebarPanel:
-    """Render datetime, weather, and system status in vertical layout."""
+    """Render weather, date, system metrics, and network in vertical layout."""
 
     def __init__(self, width: int, height: int) -> None:
         self._width = width
@@ -38,27 +37,13 @@ class SidebarPanel:
         date_time: DateTimeInfo,
         weather: WeatherInfo,
         system: SystemStatus,
+        network: NetworkInfo,
     ) -> Image.Image:
         image = Image.new("L", (self._width, self._height), GRAY_WHITE)
 
-        left_small = FONT_SIZE_NORMAL
-        left_normal = FONT_SIZE_LARGE
-        left_large = FONT_SIZE_TITLE
-        left_title = 32
-        date_year_size = left_normal
-        date_main_size = left_title + 4
-        temp_size = left_title
-
         y = MARGIN
 
-        self._draw_bold_text(
-            image,
-            (MARGIN, y),
-            "Weather",
-            fill=GRAY_MID,
-            font_size=left_normal,
-        )
-        y += TEXT_LINE_HEIGHT
+        temp_size = FONT_SIZE_TITLE
         if weather.temperature_celsius is not None:
             temp_str = f"{weather.temperature_celsius:.1f}°C"
             draw_text(image, (MARGIN, y), temp_str, fill=GRAY_BLACK, font_size=temp_size)
@@ -68,18 +53,17 @@ class SidebarPanel:
                 (MARGIN, y),
                 truncate_text(weather.summary, 18),
                 fill=GRAY_BLACK,
-                font_size=left_small,
+                font_size=FONT_SIZE_NORMAL,
             )
-        y += TITLE_LINE_HEIGHT + 18
+        y += TITLE_LINE_HEIGHT + 4
 
-        self._draw_bold_text(
-            image,
-            (MARGIN, y),
-            "System",
-            fill=GRAY_MID,
-            font_size=left_normal,
-        )
-        y += TEXT_LINE_HEIGHT + 6
+        date_line = date_time.now.strftime("%a %b %d").upper()
+        draw_text(image, (MARGIN, y), date_line, fill=GRAY_BLACK, font_size=FONT_SIZE_NORMAL, font_weight="semibold")
+        y += TEXT_LINE_HEIGHT
+
+        year_str = date_time.now.strftime("%Y")
+        draw_text(image, (MARGIN, y), year_str, fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
+        y += TEXT_LINE_HEIGHT + 20
 
         detail_size = FONT_SIZE_SMALL
         value_size = FONT_SIZE_NORMAL
@@ -87,7 +71,7 @@ class SidebarPanel:
         detail_font = self._load_font(detail_size)
         value_font = self._load_font(value_size)
 
-        self._draw_bold_text(image, (MARGIN, y), "CPU", fill=GRAY_MID, font_size=left_small)
+        self._draw_bold_text(image, (MARGIN, y), "CPU", fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
         y += TEXT_LINE_HEIGHT - 2
 
         cpu_x = MARGIN
@@ -117,8 +101,6 @@ class SidebarPanel:
         draw_text(image, (avg_label_x, y), avg_label, fill=GRAY_BLACK, font_size=detail_size)
         avg_label_w = metrics_draw.textbbox((0, 0), avg_label, font=detail_font)[2]
         avg_value_x = avg_label_x + avg_label_w + 6
-        avg_detail_bottom = metrics_draw.textbbox((0, 0), avg_label, font=detail_font)[3]
-        avg_value_bottom = metrics_draw.textbbox((0, 0), avg_value, font=value_font)[3]
         avg_value_y = peak_value_y
         draw_text(
             image,
@@ -131,7 +113,7 @@ class SidebarPanel:
 
         y += TEXT_LINE_HEIGHT + 4
 
-        self._draw_bold_text(image, (MARGIN, y), "RAM", fill=GRAY_MID, font_size=left_small)
+        self._draw_bold_text(image, (MARGIN, y), "RAM", fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
         y += TEXT_LINE_HEIGHT - 2
 
         mem_used_value_text = f"{system.memory_used_gb:.1f}"
@@ -201,39 +183,24 @@ class SidebarPanel:
 
         y += bar_height + 6
         global_text = f"Global {system.global_load_percent:.0f}%"
-        draw_text(image, (MARGIN, y), global_text, fill=GRAY_MID, font_size=left_small)
+        draw_text(image, (MARGIN, y), global_text, fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
 
-        month_str = date_time.now.strftime("%m")
-        day_str = date_time.now.strftime("%d")
-        year_str = date_time.now.strftime("%Y")
+        y += TEXT_LINE_HEIGHT + 8
 
-        draw = ImageDraw.Draw(image)
-        date_font = self._load_font(date_main_size)
-        year_font = self._load_font(date_year_size)
-        month_bbox = draw.textbbox((0, 0), month_str, font=date_font)
-        day_bbox = draw.textbbox((0, 0), day_str, font=date_font)
-        year_bbox = draw.textbbox((0, 0), year_str, font=year_font)
+        if network.connection_type == "wifi":
+            ssid = network.ssid or ""
+            network_label = f"WiFi {ssid}" if ssid else "WiFi"
+            network_label = truncate_text(network_label, 18)
+        elif network.connection_type == "ethernet":
+            network_label = "Ethernet"
+        else:
+            network_label = "Offline" if not network.online else "Unknown"
 
-        month_width = month_bbox[2] - month_bbox[0]
-        month_height = month_bbox[3] - month_bbox[1]
-        day_width = day_bbox[2] - day_bbox[0]
-        day_height = day_bbox[3] - day_bbox[1]
-        day_bottom = day_bbox[3]
-        year_bottom = year_bbox[3]
+        draw_text(image, (MARGIN, y), network_label, fill=GRAY_BLACK, font_size=FONT_SIZE_SMALL)
+        y += TEXT_LINE_HEIGHT
 
-        stack_gap = 6
-        bottom_lift = 8
-        day_y = int(self._height - MARGIN - day_height - bottom_lift)
-        month_y = int(day_y - stack_gap - month_height)
-
-        draw_text(image, (MARGIN, month_y), month_str, fill=GRAY_BLACK, font_size=date_main_size)
-        draw_text(image, (MARGIN, day_y), day_str, fill=GRAY_BLACK, font_size=date_main_size)
-
-        year_gap = 12
-        stack_width = max(month_width, day_width)
-        year_x = int(MARGIN + stack_width + year_gap)
-        year_y = int(day_y + day_bottom - year_bottom)
-        draw_text(image, (year_x, year_y), year_str, fill=GRAY_MID, font_size=date_year_size)
+        ip_text = network.ip_address if network.ip_address else "No IP"
+        draw_text(image, (MARGIN, y), ip_text, fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
 
         return image
 

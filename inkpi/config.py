@@ -20,7 +20,7 @@ class PageConfig:
 class DashboardConfig:
     rotation_interval_seconds: int = 300
     pages: list[PageConfig] = field(
-        default_factory=lambda: [PageConfig("overview"), PageConfig("codex_usage")]
+        default_factory=lambda: [PageConfig("overview")]
     )
 
 
@@ -67,7 +67,7 @@ def parse_config(raw: dict[str, Any]) -> InkPiConfig:
     dashboard_raw = raw.get("dashboard") or {}
     pages = [
         PageConfig(id=str(item["id"]), enabled=bool(item.get("enabled", True)))
-        for item in dashboard_raw.get("pages", [{"id": "overview"}, {"id": "codex_usage"}])
+        for item in dashboard_raw.get("pages", [{"id": "overview"}])
     ]
     if not pages or not any(page.enabled for page in pages):
         raise ConfigError("at least one dashboard page must be enabled")

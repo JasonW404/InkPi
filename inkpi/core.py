@@ -13,7 +13,6 @@ from typing import Any
 from inkpi.config import default_config_path, load_config
 from inkpi.contracts import FrameMetadata
 from inkpi.dashboard.controller import DashboardController
-from inkpi.dashboard.pages.codex_usage import CodexUsagePage
 from inkpi.dashboard.pages.overview import OverviewPage
 from inkpi.display.service import DEFAULT_SOCKET as DISPLAY_SOCKET
 from inkpi.display.service import DisplayClient
@@ -113,7 +112,7 @@ def build_core(
     config = load_config(path)
     management = LocalManagementService()
     controller = DashboardController(
-        [OverviewPage(management), CodexUsagePage()],
+        [OverviewPage(management)],
         config,
         config_path=path,
     )

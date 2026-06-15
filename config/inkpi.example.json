@@ -6,10 +6,6 @@
       {
         "id": "overview",
         "enabled": true
-      },
-      {
-        "id": "codex_usage",
-        "enabled": true
       }
     ]
   },

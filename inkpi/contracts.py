@@ -102,6 +102,9 @@ class NetworkStatus:
     ethernet_connected: bool
     wifi_connected: bool
     active_interfaces: list[str]
+    ip_address: str = ""
+    wifi_ssid: str | None = None
+    connection_type: str = "unknown"
 
 
 class ManagementDataProvider(Protocol):
