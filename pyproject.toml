@@ -1,20 +1,38 @@
 [project]
-name = "einkdashboard"
-version = "0.1.0"
-description = "Raspberry Pi e-ink dashboard with scheduled partial/full refresh"
+name = "inkpi"
+version = "0.2.0"
+description = "Modular Raspberry Pi e-ink dashboard appliance"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-	"gpiozero>=2.0.1",
-	"lgpio>=0.2.2.0",
 	"pillow>=10.0.0",
 	"requests>=2.32.0",
-	"rpi-gpio>=0.7.1",
-	"spidev>=3.8",
 ]
 
 [project.optional-dependencies]
 rpi = [
+	"lgpio>=0.2.2.0",
+	"rpi-gpio>=0.7.1",
 	"spidev>=3.6",
 	"gpiozero>=2.0",
 ]
+dev = [
+	"pytest>=8.3.0",
+]
+
+[project.scripts]
+inkpi-core = "inkpi.cli:core_main"
+inkpi-display = "inkpi.cli:display_main"
+inkpi-ctl = "inkpi.cli:control_main"
+inkpi-preview = "inkpi.cli:preview_main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["inkpi*", "src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
