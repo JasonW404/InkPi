@@ -122,17 +122,24 @@ class GitHubService:
 		commit_counter: Counter[date] = Counter()
 		seen_shas: set[str] = set()
 
-		if self._extra_repos and self._commit_email:
+		if self._extra_repos:
 			search_fn = getattr(self._api, "search_user_commits", None)
 			if search_fn:
-				search_items = search_fn(self._commit_email, since, until)
-				for item in search_items:
-					repo = item.get("repository", {})
-					if not isinstance(repo, dict):
-						continue
-					repo_full_name = repo.get("full_name", "")
-					if repo_full_name in self._extra_repos:
-						self._collect_user_commit_days([item], month_start, seen_shas, commit_counter)
+				emails_to_search = []
+				if self._commit_email:
+					emails_to_search.append(self._commit_email)
+				if self._username:
+					emails_to_search.append(f"{self._username}@users.noreply.github.com")
+				
+				for email in emails_to_search:
+					search_items = search_fn(email, since, until)
+					for item in search_items:
+						repo = item.get("repository", {})
+						if not isinstance(repo, dict):
+							continue
+						repo_full_name = repo.get("full_name", "")
+						if repo_full_name in self._extra_repos:
+							self._collect_user_commit_days([item], month_start, seen_shas, commit_counter)
 
 		org_repos: list[tuple[str, str]] = []
 		if self._organization and repos:
