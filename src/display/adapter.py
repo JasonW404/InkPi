@@ -43,6 +43,8 @@ class EPDAdapter:
         self._width = width
         self._height = height
         if orientation is None:
+            from src.config import _load_dotenv_file
+            _load_dotenv_file()
             orientation = os.getenv("EINK_ORIENTATION", "landscape")
         orientation_map = {
             "landscape": 0,
