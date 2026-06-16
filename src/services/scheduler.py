@@ -281,6 +281,9 @@ class DataScheduler:
                     self._cached.card = result
 
             self._cached.last_update[group.value] = time.monotonic()
+            
+            if group == UpdateGroup.DATETIME:
+                self._groups[group].interval_seconds = 86400.0
 
         duration_ms = (time.perf_counter() - started) * 1000
         self._logger.info(
