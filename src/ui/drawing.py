@@ -57,6 +57,10 @@ def _load_font(font_size: int, font_weight: FontWeight) -> ImageFont.ImageFont:
     try:
         return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
     except OSError:
+        pass
+    try:
+        return ImageFont.truetype("/usr/share/fonts/truetype/ancient-scripts/Symbola_hint.ttf", font_size)
+    except OSError:
         return ImageFont.load_default()
 
 

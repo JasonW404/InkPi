@@ -48,10 +48,9 @@ class SidebarPanel:
         if weather.temperature_celsius is not None:
             temp_str = f"{weather.temperature_celsius:.1f}°C"
             icon_str = self._weather_icon(weather.icon)
-            draw_text(image, (MARGIN, y), icon_str, fill=GRAY_BLACK, font_size=temp_size)
-            
-            icon_font = self._load_font(temp_size)
+            icon_font = self._load_icon_font(temp_size)
             draw = ImageDraw.Draw(image)
+            draw.text((MARGIN, y), icon_str, fill=GRAY_BLACK, font=icon_font)
             icon_width = draw.textbbox((0, 0), icon_str, font=icon_font)[2]
             
             draw_text(image, (MARGIN + icon_width + 8, y), temp_str, fill=GRAY_BLACK, font_size=temp_size)
@@ -259,16 +258,28 @@ class SidebarPanel:
         icon_map = {
             "clear": "☀",
             "partly_cloudy": "⛅",
-            "fog": "🌫",
-            "drizzle": "🌦",
-            "rain": "🌧",
+            "fog": "☁",
+            "drizzle": "☂",
+            "rain": "☔",
             "snow": "❄",
-            "rain_showers": "🌦",
-            "snow_showers": "🌨",
+            "rain_showers": "☔",
+            "snow_showers": "❅",
             "thunderstorm": "⛈",
-            "thunderstorm_hail": "⛈",
+            "thunderstorm_hail": "⚡",
         }
         return icon_map.get(icon_name, "?")
+
+    @staticmethod
+    def _load_icon_font(font_size: int) -> ImageFont.ImageFont:
+        for path in (
+            "/usr/share/fonts/truetype/ancient-scripts/Symbola_hint.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ):
+            try:
+                return cast(ImageFont.ImageFont, ImageFont.truetype(path, font_size))
+            except OSError:
+                continue
+        return cast(ImageFont.ImageFont, ImageFont.load_default())
 
 
 def _inkpi_version() -> str:
