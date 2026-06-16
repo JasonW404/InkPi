@@ -183,11 +183,13 @@ class GitHubService:
 		repo_name: str,
 		since: str,
 		until: str,
+		author: str | None = None,
 	) -> list[dict[str, object]]:
 		branches_fn = getattr(self._api, "fetch_repo_branches", None)
 		if not branches_fn:
 			return self._api.fetch_repo_commits(
 				organization=org, repo_name=repo_name, since=since, until=until,
+				author=author,
 			)
 
 		branches = branches_fn(org, repo_name)
@@ -199,7 +201,7 @@ class GitHubService:
 		for branch in branches:
 			commits = self._api.fetch_repo_commits(
 				organization=org, repo_name=repo_name,
-				since=since, until=until, sha=branch,
+				since=since, until=until, sha=branch, author=author,
 			)
 			for commit in commits:
 				sha = commit.get("sha")
