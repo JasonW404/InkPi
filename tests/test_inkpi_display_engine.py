@@ -13,6 +13,7 @@ from inkpi.display.engine import DisplayEngine
 class FakeBackend:
     def __init__(self) -> None:
         self.actions: list[str] = []
+        self.regions: list[tuple[int, int, int, int] | None] = []
         self.block = threading.Event()
         self.block.set()
         self.entered = threading.Event()
@@ -22,6 +23,21 @@ class FakeBackend:
 
     def display(self, image, action: str) -> bool:
         self.actions.append(action)
+        self.regions.append(None)
+        self.entered.set()
+        self.block.wait(timeout=5)
+        return True
+
+    def display_region(self, image, region: tuple[int, int, int, int]) -> bool:
+        self.actions.append("partial")
+        self.regions.append(region)
+        self.entered.set()
+        self.block.wait(timeout=5)
+        return True
+
+    def repair_region(self, image, region: tuple[int, int, int, int]) -> bool:
+        self.actions.append("partial")
+        self.regions.append(region)
         self.entered.set()
         self.block.wait(timeout=5)
         return True
@@ -37,6 +53,23 @@ class FailingBackend(FakeBackend):
 
     def display(self, image, action: str) -> bool:
         self.actions.append(action)
+        self.regions.append(None)
+        if self.fail_next:
+            self.fail_next = False
+            return False
+        return True
+
+    def display_region(self, image, region) -> bool:
+        self.actions.append("partial")
+        self.regions.append(region)
+        if self.fail_next:
+            self.fail_next = False
+            return False
+        return True
+
+    def repair_region(self, image, region) -> bool:
+        self.actions.append("partial")
+        self.regions.append(region)
         if self.fail_next:
             self.fail_next = False
             return False
@@ -129,3 +162,86 @@ def test_failure_makes_next_refresh_a_full_recovery() -> None:
     assert failed.action == "failed"
     assert recovered.action == "full"
     assert recovered.reason == "startup_or_recovery"
+
+
+def test_region_scoped_partial_for_small_changes() -> None:
+    backend = FakeBackend()
+    engine = DisplayEngine(
+        backend,
+        DisplayConfig(
+            max_partial_refreshes=50,
+            meaningful_change_ratio=0.00001,
+            partial_change_ratio=0.5,
+            region_repair_threshold=30,
+            region_padding=8,
+        ),
+    )
+    engine.start()
+    try:
+        result1 = engine.submit(frame(box=(100, 100, 200, 200)), FrameMetadata("one"))
+        assert result1.action == "full"
+
+        result2 = engine.submit(frame(box=(100, 100, 210, 200)), FrameMetadata("one"))
+        assert result2.action == "partial"
+        assert result2.dirty_region is not None
+        x1, y1, x2, y2 = result2.dirty_region
+        assert x1 % 8 == 0
+        assert x2 % 8 == 0
+    finally:
+        engine.stop()
+
+
+def test_region_repair_after_threshold() -> None:
+    backend = FakeBackend()
+    engine = DisplayEngine(
+        backend,
+        DisplayConfig(
+            max_partial_refreshes=50,
+            meaningful_change_ratio=0.00001,
+            partial_change_ratio=0.5,
+            region_repair_threshold=3,
+            region_padding=8,
+        ),
+    )
+    engine.start()
+    try:
+        engine.submit(frame(box=(100, 100, 200, 200)), FrameMetadata("one"))
+
+        for i in range(1, 4):
+            result = engine.submit(frame(box=(100, 100, 200 + i, 200)), FrameMetadata("one"))
+            assert result.action == "partial"
+
+        result = engine.submit(frame(box=(100, 100, 205, 200)), FrameMetadata("one"))
+        assert result.action == "partial"
+        assert result.reason == "region_repair_threshold"
+    finally:
+        engine.stop()
+
+
+def test_full_refresh_resets_region_tracker() -> None:
+    backend = FakeBackend()
+    engine = DisplayEngine(
+        backend,
+        DisplayConfig(
+            max_partial_refreshes=2,
+            meaningful_change_ratio=0.00001,
+            partial_change_ratio=0.5,
+            region_repair_threshold=10,
+            region_padding=8,
+        ),
+    )
+    engine.start()
+    try:
+        engine.submit(frame(box=(100, 100, 200, 200)), FrameMetadata("one"))
+        engine.submit(frame(box=(100, 100, 201, 200)), FrameMetadata("one"))
+        engine.submit(frame(box=(100, 100, 202, 200)), FrameMetadata("one"))
+        result = engine.submit(frame(box=(100, 100, 203, 200)), FrameMetadata("one"))
+        assert result.action == "full"
+        assert result.reason == "partial_refresh_limit"
+
+        engine.submit(frame(box=(100, 100, 204, 200)), FrameMetadata("one"))
+        result = engine.submit(frame(box=(100, 100, 205, 200)), FrameMetadata("one"))
+        assert result.action == "partial"
+        assert result.reason != "region_repair_threshold"
+    finally:
+        engine.stop()

@@ -27,9 +27,11 @@ class DashboardConfig:
 @dataclass(frozen=True)
 class DisplayConfig:
     policy: str = "longevity"
-    max_partial_refreshes: int = 5
+    max_partial_refreshes: int = 50
     meaningful_change_ratio: float = 0.0005
     partial_change_ratio: float = 0.12
+    region_repair_threshold: int = 30
+    region_padding: int = 8
 
 
 @dataclass(frozen=True)
@@ -79,9 +81,9 @@ def parse_config(raw: dict[str, Any]) -> InkPiConfig:
         raise ConfigError("rotation_interval_seconds must be at least 10")
 
     display_raw = raw.get("display") or {}
-    max_partial = int(display_raw.get("max_partial_refreshes", 5))
-    if not 0 <= max_partial <= 20:
-        raise ConfigError("max_partial_refreshes must be between 0 and 20")
+    max_partial = int(display_raw.get("max_partial_refreshes", 50))
+    if not 0 <= max_partial <= 200:
+        raise ConfigError("max_partial_refreshes must be between 0 and 200")
 
     policy = str(display_raw.get("policy", "longevity"))
     if policy != "longevity":
@@ -92,6 +94,14 @@ def parse_config(raw: dict[str, Any]) -> InkPiConfig:
     if not 0 <= meaningful < partial <= 1:
         raise ConfigError("display change ratios are invalid")
 
+    region_repair = int(display_raw.get("region_repair_threshold", 30))
+    if not 1 <= region_repair <= 200:
+        raise ConfigError("region_repair_threshold must be between 1 and 200")
+
+    region_padding = int(display_raw.get("region_padding", 8))
+    if not 0 <= region_padding <= 64:
+        raise ConfigError("region_padding must be between 0 and 64")
+
     return InkPiConfig(
         dashboard=DashboardConfig(rotation_interval_seconds=rotation, pages=pages),
         display=DisplayConfig(
@@ -99,6 +109,8 @@ def parse_config(raw: dict[str, Any]) -> InkPiConfig:
             max_partial_refreshes=max_partial,
             meaningful_change_ratio=meaningful,
             partial_change_ratio=partial,
+            region_repair_threshold=region_repair,
+            region_padding=region_padding,
         ),
     )
 

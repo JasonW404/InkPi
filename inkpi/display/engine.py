@@ -6,7 +6,7 @@ import logging
 import queue
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Protocol
 
 from PIL import Image, ImageChops
@@ -17,12 +17,58 @@ from inkpi.contracts import DisplayResult, DisplayStatus, FrameMetadata, utc_now
 RefreshAction = Literal["full", "partial"]
 
 
+@dataclass(frozen=True)
+class _DiffResult:
+    changed_ratio: float
+    grayscale_changed: bool
+    dirty_bbox: tuple[int, int, int, int] | None
+
+
+@dataclass
+class _RegionState:
+    partial_count: int = 0
+
+
+class _RegionTracker:
+
+    def __init__(self, repair_threshold: int = 30) -> None:
+        self._regions: dict[str, _RegionState] = {}
+        self._repair_threshold = repair_threshold
+
+    def record_partial(self, bbox: tuple[int, int, int, int]) -> None:
+        key = self._region_key(bbox)
+        state = self._regions.get(key, _RegionState())
+        state.partial_count += 1
+        self._regions[key] = state
+
+    def needs_repair(self, bbox: tuple[int, int, int, int]) -> bool:
+        key = self._region_key(bbox)
+        state = self._regions.get(key)
+        return state is not None and state.partial_count >= self._repair_threshold
+
+    def reset_region(self, bbox: tuple[int, int, int, int]) -> None:
+        key = self._region_key(bbox)
+        self._regions.pop(key, None)
+
+    def reset_all(self) -> None:
+        self._regions.clear()
+
+    @staticmethod
+    def _region_key(bbox: tuple[int, int, int, int]) -> str:
+        x1, y1, x2, y2 = bbox
+        return f"{x1 // 64}_{y1 // 64}_{x2 // 64}_{y2 // 64}"
+
+
 class DisplayBackend(Protocol):
     """Hardware operations available only inside the display module."""
 
     def initialize(self, grayscale: bool = True) -> bool: ...
 
     def display(self, image: Image.Image, action: RefreshAction) -> bool: ...
+
+    def display_region(self, image: Image.Image, region: tuple[int, int, int, int]) -> bool: ...
+
+    def repair_region(self, image: Image.Image, region: tuple[int, int, int, int]) -> bool: ...
 
     def sleep(self) -> bool: ...
 
@@ -43,6 +89,12 @@ class WaveshareBackend:
 
         mode = RefreshMode.FULL if action == "full" else RefreshMode.PARTIAL
         return self._adapter.display(image, mode=mode)
+
+    def display_region(self, image: Image.Image, region: tuple[int, int, int, int]) -> bool:
+        return self._adapter.display_region(image, region)
+
+    def repair_region(self, image: Image.Image, region: tuple[int, int, int, int]) -> bool:
+        return self._adapter.repair_region(image, region)
 
     def sleep(self) -> bool:
         return self._adapter.sleep()
@@ -78,6 +130,7 @@ class DisplayEngine:
         self._last_action: str | None = None
         self._last_reason: str | None = None
         self._last_refresh_at: str | None = None
+        self._region_tracker = _RegionTracker(config.region_repair_threshold)
 
     def start(self) -> None:
         """Initialize hardware and start the serialized display worker."""
@@ -148,32 +201,61 @@ class DisplayEngine:
 
     def _process(self, image: Image.Image, metadata: FrameMetadata) -> DisplayResult:
         started = time.monotonic()
-        action, reason = self._decide(image, metadata)
+        action, reason, region = self._decide(image, metadata)
+
         if action == "skipped":
             self._skipped_refreshes += 1
             self._record(action, reason)
             return DisplayResult(True, "skipped", reason)
 
-        assert action in {"full", "partial"}
-        output = image if action == "full" else self._monochrome(image)
-        success = self._backend.display(output, action)
+        if action == "full":
+            success = self._backend.display(image, "full")
+            duration_ms = (time.monotonic() - started) * 1000
+            if success:
+                self._previous = image.copy()
+                self._active_page_id = metadata.page_id
+                self._consecutive_failures = 0
+                self._full_refreshes += 1
+                self._partial_streak = 0
+                self._region_tracker.reset_all()
+                self._record(action, reason)
+                return DisplayResult(True, "full", reason, duration_ms)
+            return self._handle_failure(duration_ms)
+
+        if action == "region_repair":
+            assert region is not None
+            success = self._backend.repair_region(image, region)
+            duration_ms = (time.monotonic() - started) * 1000
+            if success:
+                self._previous = image.copy()
+                self._active_page_id = metadata.page_id
+                self._consecutive_failures = 0
+                self._partial_refreshes += 1
+                self._partial_streak += 1
+                self._region_tracker.reset_region(region)
+                self._record("partial", f"region_repair region={region}")
+                return DisplayResult(True, "partial", reason, duration_ms, dirty_region=region)
+            return self._handle_failure(duration_ms)
+
+        assert action == "partial" and region is not None
+        success = self._backend.display_region(image, region)
         duration_ms = (time.monotonic() - started) * 1000
         if success:
             self._previous = image.copy()
             self._active_page_id = metadata.page_id
             self._consecutive_failures = 0
-            if action == "full":
-                self._full_refreshes += 1
-                self._partial_streak = 0
-            else:
-                self._partial_refreshes += 1
-                self._partial_streak += 1
-            self._record(action, reason)
-            return DisplayResult(True, action, reason, duration_ms)
+            self._partial_refreshes += 1
+            self._partial_streak += 1
+            self._region_tracker.record_partial(region)
+            self._record("partial", f"{reason} region={region}")
+            return DisplayResult(True, "partial", reason, duration_ms, dirty_region=region)
+        return self._handle_failure(duration_ms)
 
+    def _handle_failure(self, duration_ms: float) -> DisplayResult:
         self._consecutive_failures += 1
         self._previous = None
         self._partial_streak = 0
+        self._region_tracker.reset_all()
         self._record("failed", "backend_refresh_failed")
         if self._consecutive_failures >= 2:
             self._initialized = self._backend.initialize(grayscale=True)
@@ -185,33 +267,68 @@ class DisplayEngine:
             error_code="display_failure",
         )
 
-    def _decide(self, image: Image.Image, metadata: FrameMetadata) -> tuple[str, str]:
+    def _decide(self, image: Image.Image, metadata: FrameMetadata) -> tuple[str, str, tuple[int, int, int, int] | None]:
         if self._previous is None:
-            return "full", "startup_or_recovery"
+            return "full", "startup_or_recovery", None
         if metadata.page_id != self._active_page_id:
-            return "full", "page_changed"
+            return "full", "page_changed", None
 
-        changed_ratio, grayscale_changed = self._difference(image)
-        if changed_ratio < self._config.meaningful_change_ratio:
-            return "skipped", "no_meaningful_visual_change"
-        if grayscale_changed:
-            return "full", "grayscale_change"
+        diff = self._difference(image)
+
+        if diff.dirty_bbox is None or diff.changed_ratio < self._config.meaningful_change_ratio:
+            return "skipped", "no_meaningful_visual_change", None
+        if diff.grayscale_changed:
+            return "full", "grayscale_change", None
+        if diff.changed_ratio > self._config.partial_change_ratio:
+            return "full", "large_visual_change", None
+
+        region = self._align_region(diff.dirty_bbox, image.size)
+
         if self._partial_streak >= self._config.max_partial_refreshes:
-            return "full", "partial_refresh_limit"
-        if changed_ratio > self._config.partial_change_ratio:
-            return "full", "large_visual_change"
-        return "partial", "small_monochrome_same_page_change"
+            return "full", "partial_refresh_limit", None
 
-    def _difference(self, image: Image.Image) -> tuple[float, bool]:
+        if self._region_tracker.needs_repair(region):
+            return "region_repair", "region_repair_threshold", region
+
+        return "partial", "small_monochrome_same_page_change", region
+
+    def _difference(self, image: Image.Image) -> _DiffResult:
         assert self._previous is not None
         previous = self._previous.convert("L")
         current = image.convert("L")
         diff = ImageChops.difference(previous, current)
-        histogram = diff.point(lambda value: 255 if value > 6 else 0).histogram()
+
+        binary = diff.point(lambda value: 255 if value > 6 else 0)
+        histogram = binary.histogram()
         changed = histogram[255] if len(histogram) > 255 else 0
         changed_ratio = changed / (image.width * image.height)
-        grayscale_changed = self._monochrome(previous).tobytes() == self._monochrome(current).tobytes() and changed > 0
-        return changed_ratio, grayscale_changed
+
+        bbox = diff.getbbox()
+
+        grayscale_changed = (
+            self._monochrome(previous).tobytes() == self._monochrome(current).tobytes()
+            and changed > 0
+        )
+
+        return _DiffResult(
+            changed_ratio=changed_ratio,
+            grayscale_changed=grayscale_changed,
+            dirty_bbox=bbox,
+        )
+
+    def _align_region(self, bbox: tuple[int, int, int, int], image_size: tuple[int, int]) -> tuple[int, int, int, int]:
+        x1, y1, x2, y2 = bbox
+        padding = self._config.region_padding
+
+        x1 = max(0, x1 - padding)
+        y1 = max(0, y1 - padding)
+        x2 = min(image_size[0], x2 + padding)
+        y2 = min(image_size[1], y2 + padding)
+
+        x1 = (x1 // 8) * 8
+        x2 = min(image_size[0], ((x2 + 7) // 8) * 8)
+
+        return (x1, y1, x2, y2)
 
     @staticmethod
     def _monochrome(image: Image.Image) -> Image.Image:

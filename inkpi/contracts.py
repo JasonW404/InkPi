@@ -33,6 +33,7 @@ class DisplayResult:
     reason: str
     duration_ms: float = 0.0
     error_code: str | None = None
+    dirty_region: tuple[int, int, int, int] | None = None
 
 
 @dataclass(frozen=True)

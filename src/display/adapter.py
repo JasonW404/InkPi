@@ -59,7 +59,7 @@ class EPDAdapter:
         self._initialized = False
         self._grayscale_enabled = True
         self._last_refresh_mode: RefreshMode | None = None
-        self._last_bw_buffer: list[int] | None = None
+        self._last_mono_image: Image.Image | None = None
         
         # Try to import EPD driver.
         try:
@@ -85,6 +85,7 @@ class EPDAdapter:
             self._grayscale_enabled = grayscale
             self._initialized = True
             self._last_refresh_mode = None
+            self._last_mono_image = None
             return True
         
         try:
@@ -104,6 +105,7 @@ class EPDAdapter:
             
             self._initialized = True
             self._last_refresh_mode = None
+            self._last_mono_image = None
             self._logger.info("EPD initialized successfully")
             return True
             
@@ -133,12 +135,7 @@ class EPDAdapter:
             )
             return False
         
-        if self._rotation == 90:
-            image = image.rotate(90, expand=True)
-        elif self._rotation == 180:
-            image = image.rotate(180)
-        elif self._rotation == 270:
-            image = image.rotate(270, expand=True)
+        image = self._apply_rotation(image)
         
         # Simulation mode.
         if not self._hardware_available:
@@ -190,8 +187,7 @@ class EPDAdapter:
         buffer = self._epd.getbuffer_4Gray(image)
         self._epd.display_4Gray(buffer)
 
-        mono_image = self._prepare_partial_image(image)
-        self._last_bw_buffer = self._epd.getbuffer(mono_image)
+        self._last_mono_image = self._prepare_partial_image(image)
 
         self._logger.info("Full refresh completed")
         return True
@@ -206,8 +202,13 @@ class EPDAdapter:
         partial_image = self._prepare_partial_image(image)
         new_buffer = self._epd.getbuffer(partial_image)
 
-        self._epd.display_Partial(new_buffer, self._last_bw_buffer)
-        self._last_bw_buffer = new_buffer
+        old_buffer = None
+        if self._last_mono_image is not None:
+            old_mono = self._prepare_partial_image(self._last_mono_image)
+            old_buffer = self._epd.getbuffer(old_mono)
+
+        self._epd.display_Partial(new_buffer, old_buffer)
+        self._last_mono_image = partial_image
 
         self._logger.info("Partial refresh completed")
         return True
@@ -219,7 +220,92 @@ class EPDAdapter:
         grayscale = image.convert("L")
         threshold = 150
         return grayscale.point(lambda value: 255 if value >= threshold else 0, mode="1")
-    
+
+    def _apply_rotation(self, image: Image.Image) -> Image.Image:
+        if self._rotation == 90:
+            return image.rotate(90, expand=True)
+        elif self._rotation == 180:
+            return image.rotate(180)
+        elif self._rotation == 270:
+            return image.rotate(270, expand=True)
+        return image
+
+    def display_region(self, image: Image.Image, region: tuple[int, int, int, int]) -> bool:
+        if not self._initialized:
+            self._logger.warning("EPD not initialized, call initialize() first")
+            return False
+
+        if image.size != (self._width, self._height):
+            self._logger.error(f"Image size mismatch: expected {self._width}x{self._height}")
+            return False
+
+        image = self._apply_rotation(image)
+
+        if not self._hardware_available:
+            self._logger.info(f"Simulating region-scoped partial refresh (region={region})")
+            mono = self._prepare_partial_image(image)
+            self._last_mono_image = mono
+            return True
+
+        try:
+            self._prepare_for_mode(RefreshMode.PARTIAL)
+
+            x1, y1, x2, y2 = region
+            mono_image = self._prepare_partial_image(image)
+
+            new_buffer = self._epd.getbuffer(mono_image)
+
+            old_buffer = None
+            if self._last_mono_image is not None:
+                old_buffer = self._epd.getbuffer(self._last_mono_image)
+
+            self._epd.display_Partial_Region(new_buffer, old_buffer, x1, y1, x2, y2)
+            self._last_mono_image = mono_image
+            self._last_refresh_mode = RefreshMode.PARTIAL
+
+            self._logger.info(f"Region-scoped partial refresh completed (region={region})")
+            return True
+
+        except Exception as e:
+            self._logger.error(f"Region display error: {e}")
+            return False
+
+    def repair_region(self, image: Image.Image, region: tuple[int, int, int, int]) -> bool:
+        if not self._initialized:
+            self._logger.warning("EPD not initialized, call initialize() first")
+            return False
+
+        if image.size != (self._width, self._height):
+            self._logger.error(f"Image size mismatch: expected {self._width}x{self._height}")
+            return False
+
+        image = self._apply_rotation(image)
+
+        if not self._hardware_available:
+            self._logger.info(f"Simulating region repair (region={region})")
+            mono = self._prepare_partial_image(image)
+            self._last_mono_image = mono
+            return True
+
+        try:
+            self._prepare_for_mode(RefreshMode.PARTIAL)
+
+            x1, y1, x2, y2 = region
+            mono_image = self._prepare_partial_image(image)
+
+            new_buffer = self._epd.getbuffer(mono_image)
+
+            self._epd.display_Partial_Region(new_buffer, None, x1, y1, x2, y2)
+            self._last_mono_image = mono_image
+            self._last_refresh_mode = RefreshMode.PARTIAL
+
+            self._logger.info(f"Region repair completed (region={region})")
+            return True
+
+        except Exception as e:
+            self._logger.error(f"Region repair error: {e}")
+            return False
+
     def clear(self) -> bool:
         """Clear the display to white.
         

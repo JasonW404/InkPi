@@ -505,6 +505,78 @@ class EPD:
 
         self.TurnOnDisplay()
 
+    def getbuffer_region(self, image, x_start, y_start, x_end, y_end):
+        """Generate a 1-bit buffer for a specific region of a full-screen image.
+
+        Args:
+            image: Full-screen PIL Image (800x480).
+            x_start: Region X start (must be 8-pixel aligned).
+            y_start: Region Y start.
+            x_end: Region X end (must be 8-pixel aligned).
+            y_end: Region Y end.
+
+        Returns:
+            List of integers representing the 1-bit buffer for the region.
+        """
+        region_width = x_end - x_start
+        region_height = y_end - y_start
+        buf = [0xFF] * (int(region_width / 8) * region_height)
+        image_monocolor = image.convert('1')
+        pixels = image_monocolor.load()
+        for y in range(y_start, y_end):
+            for x in range(x_start, x_end):
+                if pixels[x, y] == 0:
+                    local_x = x - x_start
+                    local_y = y - y_start
+                    buf[int((local_x + local_y * region_width) / 8)] &= ~(0x80 >> (local_x % 8))
+        return buf
+
+    def display_Partial_Region(self, new_buffer, old_buffer, x_start, y_start, x_end, y_end):
+        """Partial refresh scoped to a specific region.
+
+        Writes full-screen buffers to RAM to keep the baseline intact,
+        then uses SetWindow to limit the physical refresh to the dirty region.
+
+        Args:
+            new_buffer: Full-screen 1-bit buffer with new content.
+            old_buffer: Full-screen 1-bit buffer with previous content, or None for white baseline (region repair).
+            x_start: Region X start (must be 8-pixel aligned).
+            y_start: Region Y start.
+            x_end: Region X end (must be 8-pixel aligned).
+            y_end: Region Y end.
+        """
+        self.send_command(0x18)  # BorderWavefrom
+        self.send_data(0x80)
+        self.send_command(0x3C)  # Border setting
+        self.send_data(0x80)
+        self.send_command(0x01)  # drive output control
+        self.send_data((self.height - 1) % 256)
+        self.send_data((self.height - 1) // 256)
+        self.send_command(0x11)  # data entry mode
+        self.send_data(0x01)     # X-mode x+ y-
+
+        # Write full-screen baseline to 0x26 RAM
+        self.SetWindow(0, self.height - 1, self.width - 1, 0)
+        self.SetCursor(0, 0)
+        if old_buffer is not None:
+            self.send_command(0x26)
+            self.send_data2(old_buffer)
+        else:
+            # White baseline for region repair
+            self.send_command(0x26)
+            self.send_data2([0xFF] * (int(self.width / 8) * self.height))
+
+        # Write full-screen new content to 0x24 RAM
+        self.SetWindow(0, self.height - 1, self.width - 1, 0)
+        self.SetCursor(0, 0)
+        self.send_command(0x24)
+        self.send_data2(new_buffer)
+
+        # Limit physical refresh to the dirty region (Y inverted in controller)
+        self.SetWindow(x_start, y_end - 1, x_end - 1, y_start)
+        self.SetCursor(x_start, y_start)
+        self.TurnOnDisplay_Part()
+
     def sleep(self):
         self.send_command(0x10) # DEEP_SLEEP
         self.send_data(0x01)
