@@ -31,15 +31,20 @@ class EPDAdapter:
     Falls back to simulation mode when hardware is unavailable.
     """
     
-    def __init__(self, width: int = 800, height: int = 480) -> None:
+    def __init__(self, width: int = 800, height: int = 480, rotation: int | None = None) -> None:
         """Initialize EPD adapter.
         
         Args:
             width: Display width in pixels.
             height: Display height in pixels.
+            rotation: Image rotation in degrees (0 or 180). Defaults to EINK_ROTATION env var.
         """
+        import os
         self._width = width
         self._height = height
+        if rotation is None:
+            rotation = int(os.getenv("EINK_ROTATION", "0"))
+        self._rotation = rotation if rotation in (0, 180) else 0
         self._logger = logging.getLogger(self.__class__.__name__)
         self._epd = None
         self._hardware_available = False
@@ -119,6 +124,9 @@ class EPDAdapter:
                 f"got {image.width}x{image.height}"
             )
             return False
+        
+        if self._rotation == 180:
+            image = image.rotate(180)
         
         # Simulation mode.
         if not self._hardware_available:
