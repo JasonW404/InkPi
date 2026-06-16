@@ -111,7 +111,7 @@ class DataScheduler:
             ),
             UpdateGroup.GITHUB: GroupConfig(
                 interval_seconds=21600.0,
-                timeout_seconds=120.0,
+                timeout_seconds=180.0,
                 providers=[self._github_provider.get_monthly_stats],
                 provider_names=["github"],
             ),
