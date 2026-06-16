@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import logging
+import time
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 class GitHubApiAdapter:
@@ -21,6 +24,17 @@ class GitHubApiAdapter:
         self._api_key = api_key
         self._timeout_seconds = timeout_seconds
         self._logger = logging.getLogger(self.__class__.__name__)
+        
+        self._session = requests.Session()
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET"],
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self._session.mount("https://", adapter)
+        self._session.mount("http://", adapter)
 
     def has_token(self) -> bool:
         """Return True when token-based authentication is available."""
@@ -315,7 +329,7 @@ class GitHubApiAdapter:
         """Issue GET request and return payload with status code."""
 
         try:
-            response = requests.get(
+            response = self._session.get(
                 url,
                 headers=self._headers(url),
                 params=params,

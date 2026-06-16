@@ -62,6 +62,7 @@ class GitHubService:
 			)
 		else:
 			self._logger.info("github_api_key_present authenticated_requests_enabled")
+		
 		daily_commits = self._fetch_user_monthly_commit_days(
 			month_start=month_start,
 			repos=repos,
@@ -86,8 +87,13 @@ class GitHubService:
 			organization_additions=additions,
 			organization_deletions=deletions,
 		)
-		self._cached_monthly_stats = stats
-		self._cached_monthly_stats_monotonic = now_mono
+		
+		if repo_count > 0 or len(daily_commits) > 0 or user_code_lines > 0:
+			self._cached_monthly_stats = stats
+			self._cached_monthly_stats_monotonic = now_mono
+		else:
+			self._logger.warning("github_stats_empty_not_caching")
+		
 		return stats
 
 	def _fetch_user_monthly_commit_days(
