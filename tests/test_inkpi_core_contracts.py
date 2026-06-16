@@ -107,7 +107,7 @@ def test_core_and_display_default_sockets_have_independent_runtime_directories()
 
 
 def test_dashboard_can_consume_mocked_management_data() -> None:
-    status = ManagementSystemProvider(Management()).get_current()
+    status, network = ManagementSystemProvider(Management()).get_current()
 
     assert status.memory_percent == 25
     assert status.cpu_peak_percent == 2

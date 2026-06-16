@@ -5,7 +5,7 @@ from __future__ import annotations
 from inkpi.contracts import ManagementDataProvider
 from src.bootstrap import build_data_service, build_renderer
 from src.config import AppConfig
-from src.domain.models import SystemStatus
+from src.domain.models import NetworkInfo, SystemStatus
 
 
 class ManagementSystemProvider:
@@ -14,15 +14,16 @@ class ManagementSystemProvider:
     def __init__(self, management: ManagementDataProvider) -> None:
         self._management = management
 
-    def get_current(self) -> SystemStatus:
+    def get_current(self) -> tuple[SystemStatus, NetworkInfo]:
         facts = self._management.get_system_status()
+        network_facts = self._management.get_network_status()
         global_load = min(
             100.0,
             (0.5 * facts.cpu_average_percent)
             + (0.3 * facts.cpu_peak_percent)
             + (0.2 * facts.memory_percent),
         )
-        return SystemStatus(
+        system_status = SystemStatus(
             cpu_average_percent=facts.cpu_average_percent,
             cpu_peak_percent=facts.cpu_peak_percent,
             cpu_per_core_percent=[],
@@ -32,6 +33,13 @@ class ManagementSystemProvider:
             global_load_percent=global_load,
             load_level=min(5, max(0, int(global_load // 20))),
         )
+        network_info = NetworkInfo(
+            connection_type=network_facts.connection_type,
+            ssid=network_facts.wifi_ssid,
+            ip_address=network_facts.ip_address,
+            online=network_facts.online,
+        )
+        return system_status, network_info
 
 
 class OverviewPage:
