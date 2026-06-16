@@ -1,4 +1,12 @@
-"""Validated, atomically persisted InkPi configuration."""
+"""Validated, atomically persisted InkPi configuration.
+
+Unified configuration system combining:
+- Dashboard and display settings (persisted to JSON)
+- Data source settings (persisted to JSON, secrets from env vars only)
+
+Secrets (API keys, tokens) are never written to the config file.
+They are read from environment variables at runtime.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +16,40 @@ import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
+
+
+def _get_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return int(value)
+
+
+def _parse_extra_repos(raw: str) -> list[str]:
+    if not raw:
+        return []
+    return [r.strip() for r in raw.split(",") if r.strip()]
+
+
+def _load_dotenv_file(path: str = ".env") -> None:
+    """Load key-value pairs from .env into process environment.
+
+    Existing environment variables are not overwritten.
+    """
+
+    dotenv_path = Path(path)
+    if not dotenv_path.exists():
+        return
+
+    for raw_line in dotenv_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", maxsplit=1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 @dataclass(frozen=True)
@@ -35,10 +77,62 @@ class DisplayConfig:
 
 
 @dataclass(frozen=True)
+class GitHubConfig:
+    username: str = "JasonW404"
+    organization: str = "ModelEngine-Group"
+    commit_email: str = ""
+    extra_repos: list[str] = field(default_factory=list)
+    api_key: str = ""
+
+    def with_secrets(self) -> GitHubConfig:
+        """Return config with API key loaded from environment."""
+        api_key = (
+            os.getenv("EINK_GITHUB_API_KEY")
+            or os.getenv("EINK_GITHUB_TOKEN")
+            or ""
+        )
+        return GitHubConfig(
+            username=self.username,
+            organization=self.organization,
+            commit_email=self.commit_email,
+            extra_repos=self.extra_repos,
+            api_key=api_key,
+        )
+
+
+@dataclass(frozen=True)
+class WeatherConfig:
+    location: str = "上海"
+    timezone: str = "Asia/Shanghai"
+    provider: str = "open-meteo"
+    api_key: str = ""
+
+    def with_secrets(self) -> WeatherConfig:
+        """Return config with API key loaded from environment."""
+        api_key = os.getenv("EINK_WEATHER_API_KEY", "")
+        return WeatherConfig(
+            location=self.location,
+            timezone=self.timezone,
+            provider=self.provider,
+            api_key=api_key,
+        )
+
+
+@dataclass(frozen=True)
+class KnowledgeCardConfig:
+    local_file: str = "data/cards.json"
+    remote_enabled: bool = False
+    remote_url: str = ""
+
+
+@dataclass(frozen=True)
 class InkPiConfig:
     schema_version: int = 1
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
+    github: GitHubConfig = field(default_factory=GitHubConfig)
+    weather: WeatherConfig = field(default_factory=WeatherConfig)
+    knowledge_card: KnowledgeCardConfig = field(default_factory=KnowledgeCardConfig)
 
 
 class ConfigError(ValueError):
@@ -52,12 +146,24 @@ def default_config_path() -> Path:
 
 
 def load_config(path: str | Path | None = None) -> InkPiConfig:
-    """Load configuration, returning defaults when no file exists."""
+    """Load configuration from JSON file and overlay secrets from environment."""
+
+    _load_dotenv_file()
 
     target = Path(path).expanduser() if path else default_config_path()
     if not target.exists():
-        return InkPiConfig()
-    return parse_config(json.loads(target.read_text(encoding="utf-8")))
+        config = InkPiConfig()
+    else:
+        config = parse_config(json.loads(target.read_text(encoding="utf-8")))
+
+    return InkPiConfig(
+        schema_version=config.schema_version,
+        dashboard=config.dashboard,
+        display=config.display,
+        github=config.github.with_secrets(),
+        weather=config.weather.with_secrets(),
+        knowledge_card=config.knowledge_card,
+    )
 
 
 def parse_config(raw: dict[str, Any]) -> InkPiConfig:
@@ -102,6 +208,24 @@ def parse_config(raw: dict[str, Any]) -> InkPiConfig:
     if not 0 <= region_padding <= 64:
         raise ConfigError("region_padding must be between 0 and 64")
 
+    github_raw = raw.get("github") or {}
+    github_username = str(github_raw.get("username", GitHubConfig.username))
+    github_org = str(github_raw.get("organization", GitHubConfig.organization))
+    github_email = str(github_raw.get("commit_email", ""))
+    github_repos = github_raw.get("extra_repos", [])
+    if not isinstance(github_repos, list):
+        github_repos = []
+
+    weather_raw = raw.get("weather") or {}
+    weather_location = str(weather_raw.get("location", WeatherConfig.location))
+    weather_tz = str(weather_raw.get("timezone", WeatherConfig.timezone))
+    weather_provider = str(weather_raw.get("provider", WeatherConfig.provider))
+
+    card_raw = raw.get("knowledge_card") or {}
+    card_file = str(card_raw.get("local_file", KnowledgeCardConfig.local_file))
+    card_remote_enabled = bool(card_raw.get("remote_enabled", False))
+    card_remote_url = str(card_raw.get("remote_url", ""))
+
     return InkPiConfig(
         dashboard=DashboardConfig(rotation_interval_seconds=rotation, pages=pages),
         display=DisplayConfig(
@@ -112,19 +236,40 @@ def parse_config(raw: dict[str, Any]) -> InkPiConfig:
             region_repair_threshold=region_repair,
             region_padding=region_padding,
         ),
+        github=GitHubConfig(
+            username=github_username,
+            organization=github_org,
+            commit_email=github_email,
+            extra_repos=github_repos,
+        ),
+        weather=WeatherConfig(
+            location=weather_location,
+            timezone=weather_tz,
+            provider=weather_provider,
+        ),
+        knowledge_card=KnowledgeCardConfig(
+            local_file=card_file,
+            remote_enabled=card_remote_enabled,
+            remote_url=card_remote_url,
+        ),
     )
 
 
 def save_config(config: InkPiConfig, path: str | Path | None = None) -> None:
-    """Atomically persist validated configuration."""
+    """Atomically persist validated configuration (excluding secrets)."""
 
     validated = parse_config(asdict(config))
     target = Path(path).expanduser() if path else default_config_path()
     target.parent.mkdir(parents=True, exist_ok=True)
+
+    config_dict = asdict(validated)
+    config_dict["github"].pop("api_key", None)
+    config_dict["weather"].pop("api_key", None)
+
     with tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", dir=target.parent, delete=False
     ) as temporary:
-        json.dump(asdict(validated), temporary, indent=2)
+        json.dump(config_dict, temporary, indent=2)
         temporary.write("\n")
         temporary_path = Path(temporary.name)
     temporary_path.chmod(0o600)

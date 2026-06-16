@@ -8,15 +8,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.config import (
-    AppConfig,
+from inkpi.config import (
+    InkPiConfig,
     GitHubConfig,
     KnowledgeCardConfig,
-    RefreshConfig,
-    ScreenConfig,
     WeatherConfig,
 )
-from src.domain.models import (
+from inkpi.domain.models import (
     CodexUsageInfo,
     CodexUsageWindow,
     DateTimeInfo,
@@ -38,19 +36,8 @@ def make_config(
     knowledge_local_file: str = "data/cards.json",
     knowledge_remote_enabled: bool = False,
     knowledge_remote_url: str = "",
-    partial_interval: int = 60,
-    full_interval: int = 3600,
-    max_partial_before_full: int = 30,
-    ghosting_mode: str = "balanced",
-) -> AppConfig:
-    return AppConfig(
-        screen=ScreenConfig(),
-        refresh=RefreshConfig(
-            partial_refresh_interval_seconds=partial_interval,
-            full_refresh_interval_seconds=full_interval,
-            max_partial_refreshes_before_full=max_partial_before_full,
-            ghosting_mode=ghosting_mode,
-        ),
+) -> InkPiConfig:
+    return InkPiConfig(
         github=GitHubConfig(
             username=github_username,
             organization=github_org,

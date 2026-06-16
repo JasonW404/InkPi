@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 
-from src.services.github import GitHubService
-from src.services.posts import KnowledgeCardService
-from src.services.weather import WeatherService
+from inkpi.services.github import GitHubService
+from inkpi.services.posts import KnowledgeCardService
+from inkpi.services.weather import WeatherService
 
 from conftest import make_config
 

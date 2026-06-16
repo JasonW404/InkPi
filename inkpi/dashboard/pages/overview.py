@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from inkpi.contracts import ManagementDataProvider
-from src.bootstrap import build_data_service, build_renderer
-from src.config import AppConfig
-from src.domain.models import NetworkInfo, SystemStatus
+from inkpi.bootstrap import build_data_service, build_renderer
+from inkpi.config import load_config
+from inkpi.domain.models import NetworkInfo, SystemStatus
 
 
 class ManagementSystemProvider:
@@ -47,7 +47,7 @@ class OverviewPage:
     name = "Overview"
 
     def __init__(self, management: ManagementDataProvider | None = None) -> None:
-        config = AppConfig.from_env()
+        config = load_config()
         system_provider = ManagementSystemProvider(management) if management else None
         self._data = build_data_service(config, system_provider=system_provider)
         self._renderer = build_renderer(config)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from PIL import Image
 
 from inkpi.config import DashboardConfig, InkPiConfig, PageConfig, load_config, save_config
@@ -18,7 +20,12 @@ class FakePage:
         return Image.new("L", (800, 480), 255 if snapshot == "one" else 0)
 
 
-def test_config_round_trip_is_atomic_and_validated(tmp_path) -> None:
+def test_config_round_trip_is_atomic_and_validated(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr("inkpi.config._load_dotenv_file", lambda *a, **kw: None)
+    monkeypatch.delenv("EINK_GITHUB_API_KEY", raising=False)
+    monkeypatch.delenv("EINK_GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("EINK_WEATHER_API_KEY", raising=False)
+
     path = tmp_path / "config.json"
     config = InkPiConfig(
         dashboard=DashboardConfig(

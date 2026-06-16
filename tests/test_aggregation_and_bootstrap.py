@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from src.bootstrap import build_data_service
-from src.services.dashboard import DashboardDataService
+from inkpi.bootstrap import build_data_service
+from inkpi.services.dashboard import DashboardDataService
 
 from conftest import (
     make_config,

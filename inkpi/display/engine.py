@@ -77,7 +77,7 @@ class WaveshareBackend:
     """Bridge the legacy Waveshare adapter into the isolated display service."""
 
     def __init__(self) -> None:
-        from src.display.adapter import EPDAdapter
+        from inkpi.display.adapter import EPDAdapter
 
         self._adapter = EPDAdapter()
 
@@ -85,7 +85,7 @@ class WaveshareBackend:
         return self._adapter.initialize(grayscale=grayscale)
 
     def display(self, image: Image.Image, action: RefreshAction) -> bool:
-        from src.display.adapter import RefreshMode
+        from inkpi.display.adapter import RefreshMode
 
         mode = RefreshMode.FULL if action == "full" else RefreshMode.PARTIAL
         return self._adapter.display(image, mode=mode)

@@ -18,7 +18,7 @@ from inkpi.display.service import DEFAULT_SOCKET as DISPLAY_SOCKET
 from inkpi.display.service import DisplayClient
 from inkpi.ipc import serve
 from inkpi.management.service import LocalManagementService
-from src.services.scheduler import DataScheduler
+from inkpi.services.scheduler import DataScheduler
 
 DEFAULT_CORE_SOCKET = Path(os.getenv("INKPI_CORE_SOCKET", "/run/inkpi-core/core.sock"))
 
@@ -105,20 +105,18 @@ def build_core(
 ) -> InkPiCore:
     """Build the production core composition root."""
 
-    from src.adapters.github_api import GitHubApiAdapter
-    from src.adapters.knowledge_cards import KnowledgeCardRemoteAdapter
-    from src.adapters.open_meteo import OpenMeteoAdapter
-    from src.config import AppConfig
-    from src.services.codex import CodexUsageService
-    from src.services.datetime import DateTimeService
-    from src.services.github import GitHubService
-    from src.services.posts import KnowledgeCardService
-    from src.services.system import SystemService
-    from src.services.weather import WeatherService
+    from inkpi.adapters.github_api import GitHubApiAdapter
+    from inkpi.adapters.knowledge_cards import KnowledgeCardRemoteAdapter
+    from inkpi.adapters.open_meteo import OpenMeteoAdapter
+    from inkpi.services.codex import CodexUsageService
+    from inkpi.services.datetime import DateTimeService
+    from inkpi.services.github import GitHubService
+    from inkpi.services.posts import KnowledgeCardService
+    from inkpi.services.system import SystemService
+    from inkpi.services.weather import WeatherService
 
     path = config_path or str(default_config_path())
     config = load_config(path)
-    app_config = AppConfig.from_env()
     
     management = LocalManagementService()
     controller = DashboardController(
@@ -128,16 +126,16 @@ def build_core(
     )
     
     weather_adapter = OpenMeteoAdapter(timeout_seconds=8)
-    github_adapter = GitHubApiAdapter(api_key=app_config.github.api_key, timeout_seconds=12)
+    github_adapter = GitHubApiAdapter(api_key=config.github.api_key, timeout_seconds=12)
     knowledge_card_adapter = KnowledgeCardRemoteAdapter(timeout_seconds=8)
     
     scheduler = DataScheduler(
         system_provider=SystemService(),
-        weather_provider=WeatherService(app_config, meteo_adapter=weather_adapter),
-        github_provider=GitHubService(app_config, api_adapter=github_adapter),
-        card_provider=KnowledgeCardService(app_config, remote_adapter=knowledge_card_adapter),
+        weather_provider=WeatherService(config, meteo_adapter=weather_adapter),
+        github_provider=GitHubService(config, api_adapter=github_adapter),
+        card_provider=KnowledgeCardService(config, remote_adapter=knowledge_card_adapter),
         codex_provider=CodexUsageService(),
-        datetime_provider=DateTimeService(app_config),
+        datetime_provider=DateTimeService(config),
     )
     
     return InkPiCore(

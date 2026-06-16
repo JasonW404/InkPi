@@ -53,13 +53,12 @@
 - 具体 adapter 实例在 `src/bootstrap.py` 统一装配并注入 service。
 - 目标：降低 service 测试成本，便于替换第三方 API 实现。
 
-### 5. Runtime Policy Layer
+### 5. Display Engine Layer
 
-- 位置：`src/runtime/`
-- 职责：封装运行时决策策略，不与硬件和数据实现耦合。
+- 位置：`inkpi/display/`
+- 职责：封装刷新决策策略，不与硬件和数据实现耦合。
 - 模块：
-  - `refresh_policy.py`：局刷/全刷时间与计数策略。
-  - `ghosting.py`：残影风险判定与局刷历史追踪。
+  - `engine.py`：脏矩形检测、区域局部刷新、区域修复、自适应刷新。
 - 要求：仅处理决策状态，不负责 I/O 和依赖构造。
 
 ### 6. UI Rendering Layer
@@ -78,20 +77,24 @@
 
 ### 8. Application Layer
 
-- 位置：`main.py`, `src/app.py`, `src/bootstrap.py`
+- 位置：`inkpi/cli.py`, `inkpi/core.py`, `src/bootstrap.py`
 - 职责：
-  - `main.py`：程序入口（实机模式/预览模式）。
+  - `inkpi/cli.py`：程序入口（inkpi-core, inkpi-display, inkpi-ctl, inkpi-preview）。
+  - `inkpi/core.py`：循环编排、调度、控制 API。
   - `src/bootstrap.py`：依赖装配（composition root）。
-  - `src/app.py`：循环编排、生命周期屏幕、信号处理。
 - 要求：应用层可编排多个层，但不承载具体业务算法和硬件细节。
 
 ## Refresh Strategy
 
-- 局部刷新周期：默认 60 秒（可配置）。
-- 强制全刷触发：
-  1. 距离上次全刷超过 1 小时。
-  2. 局刷次数达到阈值 N（可配置）。
-- 决策优先级：全刷触发条件先判定，再判定局刷。
+- 脏矩形检测：计算变化像素的边界框，仅刷新变化区域。
+- 区域局部刷新：使用 SetWindow 限制物理刷新范围，减少 EPD 刷新面积。
+- 区域修复：每 N 次局部刷新后，使用白色基线进行"迷你全局刷新"，清除残影。
+- 基线同步：每次局部刷新后将新内容写入 0x26 RAM，防止陈旧差分累积。
+- 自适应刷新：按区域跟踪局部刷新次数，智能触发修复。
+- 默认配置：
+  - 最大局部刷新次数：50（可配置）
+  - 区域修复阈值：30 次（可配置）
+  - 区域填充：8 像素（可配置）
 
 ## Runtime Safety Guarantees
 

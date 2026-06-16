@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 from inkpi.contracts import NetworkStatus, SystemStatus
-from src.services.system import SystemService
+from inkpi.services.system import SystemService
 
 
 class LocalManagementService:
