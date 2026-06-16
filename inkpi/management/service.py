@@ -21,7 +21,7 @@ class LocalManagementService:
 
     def get_system_status(self) -> SystemStatus:
         with self._system_lock:
-            raw = self._system.get_current()
+            raw, _ = self._system.get_current()
         return SystemStatus(
             uptime_seconds=self._uptime_seconds(),
             cpu_average_percent=raw.cpu_average_percent,
