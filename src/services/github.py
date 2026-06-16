@@ -122,23 +122,21 @@ class GitHubService:
 		commit_counter: Counter[date] = Counter()
 		seen_shas: set[str] = set()
 
-		all_repos: list[tuple[str, str]] = []
-		if self._organization and repos:
-			all_repos.extend((self._organization, r) for r in repos)
-		for extra_repo in self._extra_repos:
-			parts = extra_repo.split("/", 1)
-			if len(parts) == 2:
-				all_repos.append((parts[0], parts[1]))
+		if self._extra_repos and self._commit_email:
+			search_fn = getattr(self._api, "search_user_commits", None)
+			if search_fn:
+				search_items = search_fn(self._commit_email, since, until)
+				for item in search_items:
+					repo = item.get("repository", {})
+					if not isinstance(repo, dict):
+						continue
+					repo_full_name = repo.get("full_name", "")
+					if repo_full_name in self._extra_repos:
+						self._collect_user_commit_days([item], month_start, seen_shas, commit_counter)
 
 		org_repos: list[tuple[str, str]] = []
 		if self._organization and repos:
 			org_repos.extend((self._organization, r) for r in repos)
-
-		extra_repos: list[tuple[str, str]] = []
-		for extra_repo in self._extra_repos:
-			parts = extra_repo.split("/", 1)
-			if len(parts) == 2:
-				extra_repos.append((parts[0], parts[1]))
 
 		for org, repo_name in org_repos:
 			commits = self._api.fetch_repo_commits(
@@ -147,10 +145,6 @@ class GitHubService:
 				since=since,
 				until=until,
 			)
-			self._collect_user_commit_days(commits, month_start, seen_shas, commit_counter)
-
-		for org, repo_name in extra_repos:
-			commits = self._fetch_commits_across_branches(org, repo_name, since, until)
 			self._collect_user_commit_days(commits, month_start, seen_shas, commit_counter)
 
 		return [
