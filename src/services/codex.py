@@ -27,7 +27,7 @@ class CodexUsageService:
     def __init__(self) -> None:
         self._cached_usage: CodexUsageInfo | None = None
         self._cached_monotonic: float = 0.0
-        self._cache_ttl_seconds = 60
+        self._cache_ttl_seconds = 300
 
     def get_current(self) -> CodexUsageInfo:
         now_mono = time.monotonic()

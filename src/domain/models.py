@@ -44,6 +44,7 @@ class WeatherInfo:
     temperature_celsius: float | None
     apparent_temperature_celsius: float | None
     updated_at: datetime
+    icon: str = "unknown"
 
 
 @dataclass(frozen=True)

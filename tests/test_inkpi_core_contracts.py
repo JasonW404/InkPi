@@ -13,6 +13,17 @@ from inkpi.dashboard.controller import DashboardController
 from inkpi.dashboard.pages.overview import ManagementSystemProvider
 
 
+class MockScheduler:
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def wait_for_update(self, timeout=None):
+        time.sleep(0.1)
+
+
 class Page:
     page_id = "page"
     name = "Page"
@@ -53,7 +64,7 @@ def test_core_control_requests_remain_responsive_during_display_refresh(tmp_path
         str(tmp_path / "config.json"),
     )
     display = BlockingDisplay()
-    core = InkPiCore(controller, display, Management(), refresh_seconds=10)
+    core = InkPiCore(controller, display, Management(), MockScheduler())
     core.start()
     assert display.entered.wait(timeout=2)
 
@@ -73,7 +84,7 @@ def test_management_contracts_are_available_from_core(tmp_path) -> None:
         InkPiConfig(dashboard=DashboardConfig(30, [PageConfig("page")])),
         str(tmp_path / "config.json"),
     )
-    core = InkPiCore(controller, BlockingDisplay(), Management())
+    core = InkPiCore(controller, BlockingDisplay(), Management(), MockScheduler())
 
     assert core.handle_request("get_system_status", {})["memory_percent"] == 25
     assert core.handle_request("get_network_status", {})["active_interfaces"] == ["eth0"]

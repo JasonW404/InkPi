@@ -12,10 +12,9 @@ from src.display.adapter import EPDAdapter
 from src.display.dirty_region import DirtyRegionTracker
 from src.services.codex import CodexUsageService
 from src.services.dashboard import DashboardDataService
-from src.services.contracts import CodexUsageProvider, NetworkProvider, SystemStatusProvider
+from src.services.contracts import CodexUsageProvider, SystemStatusProvider
 from src.services.datetime import DateTimeService
 from src.services.github import GitHubService
-from src.services.network import NetworkService
 from src.services.posts import KnowledgeCardService
 from src.services.system import SystemService
 from src.services.weather import WeatherService
@@ -37,7 +36,6 @@ class RuntimeComponents:
 def build_data_service(
     config: AppConfig,
     system_provider: SystemStatusProvider | None = None,
-    network_provider: NetworkProvider | None = None,
     codex_provider: CodexUsageProvider | None = None,
 ) -> DashboardDataService:
     """Build shared dashboard data service used by runtime and preview modes."""
@@ -52,7 +50,6 @@ def build_data_service(
         system_provider=system_provider or SystemService(),
         github_provider=GitHubService(config, api_adapter=github_adapter),
         card_provider=KnowledgeCardService(config, remote_adapter=knowledge_card_adapter),
-        network_provider=network_provider or NetworkService(),
         codex_provider=codex_provider or CodexUsageService(),
     )
 

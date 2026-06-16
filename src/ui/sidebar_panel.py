@@ -47,7 +47,14 @@ class SidebarPanel:
         temp_size = FONT_SIZE_TITLE
         if weather.temperature_celsius is not None:
             temp_str = f"{weather.temperature_celsius:.1f}°C"
-            draw_text(image, (MARGIN, y), temp_str, fill=GRAY_BLACK, font_size=temp_size)
+            icon_str = self._weather_icon(weather.icon)
+            draw_text(image, (MARGIN, y), icon_str, fill=GRAY_BLACK, font_size=temp_size)
+            
+            icon_font = self._load_font(temp_size)
+            draw = ImageDraw.Draw(image)
+            icon_width = draw.textbbox((0, 0), icon_str, font=icon_font)[2]
+            
+            draw_text(image, (MARGIN + icon_width + 8, y), temp_str, fill=GRAY_BLACK, font_size=temp_size)
         else:
             draw_text(
                 image,
@@ -246,6 +253,22 @@ class SidebarPanel:
             except OSError:
                 continue
         return cast(ImageFont.ImageFont, ImageFont.load_default())
+
+    @staticmethod
+    def _weather_icon(icon_name: str) -> str:
+        icon_map = {
+            "clear": "☀",
+            "partly_cloudy": "⛅",
+            "fog": "🌫",
+            "drizzle": "🌦",
+            "rain": "🌧",
+            "snow": "❄",
+            "rain_showers": "🌦",
+            "snow_showers": "🌨",
+            "thunderstorm": "⛈",
+            "thunderstorm_hail": "⛈",
+        }
+        return icon_map.get(icon_name, "?")
 
 
 def _inkpi_version() -> str:

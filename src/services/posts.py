@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -26,9 +27,19 @@ class KnowledgeCardService:
 		self._remote_enabled = config.knowledge_card.remote_enabled
 		self._remote_url = config.knowledge_card.remote_url
 		self._remote_adapter = remote_adapter
+		self._cached_card: KnowledgeCard | None = None
+		self._cached_monotonic: float = 0.0
+		self._cache_ttl_seconds = 3600
 
 	def get_current(self) -> KnowledgeCard:
 		"""Return selected card from local-first hybrid sources."""
+
+		now_mono = time.monotonic()
+		if (
+			self._cached_card is not None
+			and now_mono - self._cached_monotonic < self._cache_ttl_seconds
+		):
+			return self._cached_card
 
 		local_cards = self._load_local_cards()
 		if local_cards:
@@ -37,13 +48,20 @@ class KnowledgeCardService:
 			card = self._fallback("local_unavailable")
 
 		if not self._remote_enabled or not self._remote_url:
+			self._cached_card = card
+			self._cached_monotonic = now_mono
 			return card
 
 		remote_cards = self._load_remote_cards()
 		if not remote_cards:
+			self._cached_card = card
+			self._cached_monotonic = now_mono
 			return card
 
-		return self._pick_today_card(remote_cards)
+		card = self._pick_today_card(remote_cards)
+		self._cached_card = card
+		self._cached_monotonic = now_mono
+		return card
 
 	def _load_local_cards(self) -> list[dict[str, str]]:
 		"""Load cards from local JSON file."""

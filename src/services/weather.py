@@ -27,11 +27,10 @@ class WeatherService:
 		self._adapter = meteo_adapter
 		self._logger = logging.getLogger(self.__class__.__name__)
 		
-		# Cache geocoded coordinates to avoid repeated API calls.
 		self._cached_coordinates: tuple[float, float] | None = None
 		self._cached_weather: WeatherInfo | None = None
 		self._cached_weather_monotonic: float = 0.0
-		self._weather_cache_ttl_seconds = 15
+		self._weather_cache_ttl_seconds = 3600
 
 	def get_current(self) -> WeatherInfo:
 		"""Fetch current weather information.
@@ -66,13 +65,15 @@ class WeatherService:
 			return fallback
 
 		current = payload.get("current", {})
+		weather_code = current.get('weather_code')
 		weather_info = WeatherInfo(
-			summary=f"code:{current.get('weather_code', 'n/a')}",
+			summary=f"code:{weather_code if weather_code is not None else 'n/a'}",
 			temperature_celsius=self._to_float_or_none(current.get("temperature_2m")),
 			apparent_temperature_celsius=self._to_float_or_none(
 				current.get("apparent_temperature")
 			),
 			updated_at=datetime.now(UTC),
+			icon=self._weather_code_to_icon(weather_code),
 		)
 		self._cached_weather = weather_info
 		self._cached_weather_monotonic = now_mono
@@ -185,4 +186,32 @@ class WeatherService:
 			return float(value)
 		except (TypeError, ValueError):
 			return None
+
+	@staticmethod
+	def _weather_code_to_icon(code: int | None) -> str:
+		if code is None:
+			return "unknown"
+		
+		if code == 0:
+			return "clear"
+		elif code in (1, 2, 3):
+			return "partly_cloudy"
+		elif code in (45, 48):
+			return "fog"
+		elif code in (51, 53, 55):
+			return "drizzle"
+		elif code in (61, 63, 65):
+			return "rain"
+		elif code in (71, 73, 75, 77):
+			return "snow"
+		elif code in (80, 81, 82):
+			return "rain_showers"
+		elif code in (85, 86):
+			return "snow_showers"
+		elif code == 95:
+			return "thunderstorm"
+		elif code in (96, 99):
+			return "thunderstorm_hail"
+		
+		return "unknown"
 

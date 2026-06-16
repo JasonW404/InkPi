@@ -36,8 +36,8 @@ class WeatherProvider(Protocol):
 class SystemStatusProvider(Protocol):
     """Contract for system status providers."""
 
-    def get_current(self) -> SystemStatus:
-        """Return current system load information."""
+    def get_current(self) -> tuple[SystemStatus, NetworkInfo]:
+        """Return current system load and network information."""
 
         ...
 
@@ -56,15 +56,6 @@ class KnowledgeCardProvider(Protocol):
 
     def get_current(self) -> KnowledgeCard:
         """Return currently selected knowledge card."""
-
-        ...
-
-
-class NetworkProvider(Protocol):
-    """Contract for network information providers."""
-
-    def get_current(self) -> NetworkInfo:
-        """Return current network connection state."""
 
         ...
 

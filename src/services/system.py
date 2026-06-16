@@ -5,9 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import socket
+import subprocess
 import time
 
-from src.domain.models import SystemStatus
+from src.domain.models import NetworkInfo, SystemStatus
 
 
 @dataclass(frozen=True)
@@ -19,10 +21,11 @@ class _CpuTimes:
 
 
 class SystemService:
-	"""Provide CPU and memory load metrics.
+	"""Provide CPU, memory, and network status.
 
 	CPU is derived from `/proc/stat` deltas for each core.
 	Memory usage is derived from `/proc/meminfo` using MemTotal - MemAvailable.
+	Network status includes connection type, SSID, and IP address.
 	"""
 
 	def __init__(self) -> None:
@@ -30,22 +33,24 @@ class SystemService:
 
 		self._previous_cpu_samples: list[_CpuTimes] | None = None
 		self._cached_status: SystemStatus | None = None
+		self._cached_network: NetworkInfo | None = None
 		self._cached_monotonic: float = 0.0
-		self._cache_ttl_seconds = 15
+		self._cache_ttl_seconds = 30
 
-	def get_current(self) -> SystemStatus:
-		"""Read current CPU/memory load and map to global level.
+	def get_current(self) -> tuple[SystemStatus, NetworkInfo]:
+		"""Read current CPU/memory load and network status.
 
 		Returns:
-			System status with CPU, memory and global load metrics.
+			Tuple of system status and network info.
 		"""
 
 		now_mono = time.monotonic()
 		if (
 			self._cached_status is not None
+			and self._cached_network is not None
 			and now_mono - self._cached_monotonic < self._cache_ttl_seconds
 		):
-			return self._cached_status
+			return self._cached_status, self._cached_network
 
 		cpu_per_core = self._read_cpu_per_core_percent()
 		cpu_average = sum(cpu_per_core) / len(cpu_per_core) if cpu_per_core else 0.0
@@ -53,10 +58,6 @@ class SystemService:
 
 		memory_used_gb, memory_total_gb, memory_percent = self._read_memory_metrics()
 
-		# Global load algorithm:
-		# - 50% average CPU pressure
-		# - 30% peak CPU pressure (highlight hot core)
-		# - 20% memory pressure
 		global_load_percent = min(
 			100.0,
 			(0.5 * cpu_average) + (0.3 * cpu_peak) + (0.2 * memory_percent),
@@ -73,9 +74,13 @@ class SystemService:
 			global_load_percent=global_load_percent,
 			load_level=load_level,
 		)
+
+		network = self._read_network_info()
+
 		self._cached_status = status
+		self._cached_network = network
 		self._cached_monotonic = now_mono
-		return status
+		return status, network
 
 	def _read_cpu_per_core_percent(self) -> list[float]:
 		"""Read per-core CPU usage percent using /proc/stat deltas."""
@@ -146,3 +151,76 @@ class SystemService:
 		memory_percent = (used_kb / total_kb) * 100.0
 
 		return memory_used_gb, memory_total_gb, max(0.0, min(100.0, memory_percent))
+
+	def _read_network_info(self) -> NetworkInfo:
+		interfaces = self._active_interfaces()
+		connection_type = self._classify(interfaces)
+		ip_address = self._local_ip()
+		ssid = self._wifi_ssid() if connection_type == "wifi" else None
+		online = self._has_default_route()
+
+		return NetworkInfo(
+			connection_type=connection_type,
+			ssid=ssid,
+			ip_address=ip_address,
+			online=online,
+		)
+
+	@staticmethod
+	def _active_interfaces() -> list[str]:
+		network_root = Path("/sys/class/net")
+		if network_root.exists():
+			result: list[str] = []
+			for path in network_root.iterdir():
+				if path.name == "lo":
+					continue
+				try:
+					state = (path / "operstate").read_text(encoding="utf-8").strip()
+				except OSError:
+					continue
+				if state == "up":
+					result.append(path.name)
+			return result
+		return [name for _, name in socket.if_nameindex() if name != "lo0"]
+
+	@staticmethod
+	def _classify(interfaces: list[str]) -> str:
+		for name in interfaces:
+			if name.startswith(("eth", "en")):
+				return "ethernet"
+		for name in interfaces:
+			if name.startswith(("wlan", "wl")):
+				return "wifi"
+		return "unknown"
+
+	@staticmethod
+	def _local_ip() -> str:
+		try:
+			with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+				sock.connect(("8.8.8.8", 80))
+				return sock.getsockname()[0]
+		except OSError:
+			return "0.0.0.0"
+
+	@staticmethod
+	def _wifi_ssid() -> str | None:
+		try:
+			result = subprocess.run(
+				["iwgetid", "-r"],
+				capture_output=True,
+				text=True,
+				timeout=2,
+			)
+			if result.returncode == 0 and result.stdout.strip():
+				return result.stdout.strip()
+		except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+			pass
+		return None
+
+	@staticmethod
+	def _has_default_route() -> bool:
+		try:
+			with socket.create_connection(("1.1.1.1", 53), timeout=0.25):
+				return True
+		except OSError:
+			return False

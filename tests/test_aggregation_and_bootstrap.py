@@ -27,7 +27,7 @@ class WeatherProviderFake:
 
 class SystemProviderFake:
     def get_current(self):
-        return sample_system()
+        return sample_system(), sample_network()
 
 
 class GitHubProviderFake:
@@ -38,11 +38,6 @@ class GitHubProviderFake:
 class CardProviderFake:
     def get_current(self):
         return sample_card()
-
-
-class NetworkProviderFake:
-    def get_current(self):
-        return sample_network()
 
 
 class CodexProviderFake:
@@ -57,7 +52,6 @@ def test_dashboard_data_service_collects_complete_snapshot() -> None:
         system_provider=SystemProviderFake(),
         github_provider=GitHubProviderFake(),
         card_provider=CardProviderFake(),
-        network_provider=NetworkProviderFake(),
         codex_provider=CodexProviderFake(),
     )
 

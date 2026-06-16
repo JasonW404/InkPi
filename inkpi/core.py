@@ -18,6 +18,7 @@ from inkpi.display.service import DEFAULT_SOCKET as DISPLAY_SOCKET
 from inkpi.display.service import DisplayClient
 from inkpi.ipc import serve
 from inkpi.management.service import LocalManagementService
+from src.services.scheduler import DataScheduler
 
 DEFAULT_CORE_SOCKET = Path(os.getenv("INKPI_CORE_SOCKET", "/run/inkpi-core/core.sock"))
 
@@ -30,12 +31,12 @@ class InkPiCore:
         controller: DashboardController,
         display: DisplayClient,
         management: LocalManagementService,
-        refresh_seconds: int = 60,
+        scheduler: DataScheduler,
     ) -> None:
         self._controller = controller
         self._display = display
         self._management = management
-        self._refresh_seconds = max(10, refresh_seconds)
+        self._scheduler = scheduler
         self._running = False
         self._worker: threading.Thread | None = None
         self._last_display_result: dict[str, Any] | None = None
@@ -46,11 +47,13 @@ class InkPiCore:
         if self._running:
             return
         self._running = True
+        self._scheduler.start()
         self._worker = threading.Thread(target=self._run, name="inkpi-core-scheduler", daemon=True)
         self._worker.start()
 
     def stop(self) -> None:
         self._running = False
+        self._scheduler.stop()
         if self._worker:
             self._worker.join(timeout=10)
 
@@ -83,7 +86,6 @@ class InkPiCore:
 
     def _run(self) -> None:
         while self._running:
-            started = time.monotonic()
             try:
                 page_id, frame = self._controller.render_next()
                 result = self._display.submit_frame(frame, FrameMetadata(page_id=page_id))
@@ -92,13 +94,8 @@ class InkPiCore:
             except Exception as error:
                 self._last_error = str(error)
                 self._logger.exception("core_refresh_cycle_failed")
-            remaining = self._refresh_seconds - (time.monotonic() - started)
-            self._sleep(max(0, remaining))
-
-    def _sleep(self, seconds: float) -> None:
-        deadline = time.monotonic() + seconds
-        while self._running and time.monotonic() < deadline:
-            time.sleep(min(0.2, deadline - time.monotonic()))
+            
+            self._scheduler.wait_for_update(timeout=60.0)
 
 
 def build_core(
@@ -108,19 +105,46 @@ def build_core(
 ) -> InkPiCore:
     """Build the production core composition root."""
 
+    from src.adapters.github_api import GitHubApiAdapter
+    from src.adapters.knowledge_cards import KnowledgeCardRemoteAdapter
+    from src.adapters.open_meteo import OpenMeteoAdapter
+    from src.config import AppConfig
+    from src.services.codex import CodexUsageService
+    from src.services.datetime import DateTimeService
+    from src.services.github import GitHubService
+    from src.services.posts import KnowledgeCardService
+    from src.services.system import SystemService
+    from src.services.weather import WeatherService
+
     path = config_path or str(default_config_path())
     config = load_config(path)
+    app_config = AppConfig.from_env()
+    
     management = LocalManagementService()
     controller = DashboardController(
         [OverviewPage(management)],
         config,
         config_path=path,
     )
+    
+    weather_adapter = OpenMeteoAdapter(timeout_seconds=8)
+    github_adapter = GitHubApiAdapter(api_key=app_config.github.api_key, timeout_seconds=12)
+    knowledge_card_adapter = KnowledgeCardRemoteAdapter(timeout_seconds=8)
+    
+    scheduler = DataScheduler(
+        system_provider=SystemService(),
+        weather_provider=WeatherService(app_config, meteo_adapter=weather_adapter),
+        github_provider=GitHubService(app_config, api_adapter=github_adapter),
+        card_provider=KnowledgeCardService(app_config, remote_adapter=knowledge_card_adapter),
+        codex_provider=CodexUsageService(),
+        datetime_provider=DateTimeService(app_config),
+    )
+    
     return InkPiCore(
         controller,
         DisplayClient(display_socket),
         management,
-        refresh_seconds=int(os.getenv("INKPI_REFRESH_SECONDS", "15")),
+        scheduler,
     )
 
 
