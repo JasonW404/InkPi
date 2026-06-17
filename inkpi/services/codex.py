@@ -24,10 +24,11 @@ class CodexCollectorError(RuntimeError):
 class CodexUsageService:
     """Collect Codex CLI subscription usage via JSON-RPC app-server protocol."""
 
-    def __init__(self) -> None:
+    def __init__(self, rpc_timeout_seconds: float = 20.0) -> None:
         self._cached_usage: CodexUsageInfo | None = None
         self._cached_monotonic: float = 0.0
         self._cache_ttl_seconds = 300
+        self._rpc_timeout_seconds = rpc_timeout_seconds
 
     def get_current(self) -> CodexUsageInfo:
         now_mono = time.monotonic()
@@ -173,7 +174,7 @@ class CodexUsageService:
         method: str,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        timeout_secs = float(os.getenv("CODEX_DASHBOARD_RPC_TIMEOUT", "20"))
+        timeout_secs = self._rpc_timeout_seconds
         deadline = time.monotonic() + timeout_secs
         _logger.debug("RPC call start: id=%d method=%s timeout=%.1fs", request_id, method, timeout_secs)
         self._send(process, {"id": request_id, "method": method, "params": params or {}})

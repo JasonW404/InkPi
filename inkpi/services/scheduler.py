@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Callable
 
+from inkpi.config import SchedulerConfig
 from inkpi.domain.models import (
     CodexUsageInfo,
     DashboardSnapshot,
@@ -78,7 +79,10 @@ class DataScheduler:
         card_provider: KnowledgeCardProvider,
         codex_provider: CodexUsageProvider,
         datetime_provider: DateTimeProvider,
+        scheduler_config: SchedulerConfig | None = None,
     ) -> None:
+        cfg = scheduler_config or SchedulerConfig()
+
         self._system_provider = system_provider
         self._weather_provider = weather_provider
         self._github_provider = github_provider
@@ -95,14 +99,14 @@ class DataScheduler:
 
         self._groups: dict[UpdateGroup, GroupConfig] = {
             UpdateGroup.SYSTEM: GroupConfig(
-                interval_seconds=30.0,
-                timeout_seconds=10.0,
+                interval_seconds=cfg.system_interval_seconds,
+                timeout_seconds=cfg.system_timeout_seconds,
                 providers=[self._system_provider.get_current],
                 provider_names=["system"],
             ),
             UpdateGroup.WEATHER: GroupConfig(
-                interval_seconds=3600.0,
-                timeout_seconds=30.0,
+                interval_seconds=cfg.weather_interval_seconds,
+                timeout_seconds=cfg.weather_timeout_seconds,
                 providers=[
                     self._weather_provider.get_current,
                     self._card_provider.get_current,
@@ -110,14 +114,14 @@ class DataScheduler:
                 provider_names=["weather", "card"],
             ),
             UpdateGroup.GITHUB: GroupConfig(
-                interval_seconds=21600.0,
-                timeout_seconds=180.0,
+                interval_seconds=cfg.github_interval_seconds,
+                timeout_seconds=cfg.github_timeout_seconds,
                 providers=[self._github_provider.get_monthly_stats],
                 provider_names=["github"],
             ),
             UpdateGroup.CODEX: GroupConfig(
-                interval_seconds=300.0,
-                timeout_seconds=30.0,
+                interval_seconds=cfg.codex_interval_seconds,
+                timeout_seconds=cfg.codex_timeout_seconds,
                 providers=[self._codex_provider.get_current],
                 provider_names=["codex"],
             ),
