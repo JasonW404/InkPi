@@ -76,10 +76,10 @@ class DisplayBackend(Protocol):
 class WaveshareBackend:
     """Bridge the legacy Waveshare adapter into the isolated display service."""
 
-    def __init__(self) -> None:
+    def __init__(self, orientation: str = "landscape") -> None:
         from inkpi.display.adapter import EPDAdapter
 
-        self._adapter = EPDAdapter()
+        self._adapter = EPDAdapter(orientation=orientation)
 
     def initialize(self, grayscale: bool = True) -> bool:
         return self._adapter.initialize(grayscale=grayscale)

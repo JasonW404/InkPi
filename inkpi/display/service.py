@@ -42,7 +42,11 @@ class DisplayClient:
 def run_display_service(socket_path: str | Path = DEFAULT_SOCKET) -> None:
     """Run the display hardware owner service."""
 
-    engine = DisplayEngine(WaveshareBackend(), load_config().display)
+    config = load_config()
+    engine = DisplayEngine(
+        WaveshareBackend(orientation=config.display.orientation),
+        config.display,
+    )
     engine.start()
 
     def handler(action: str, payload: dict[str, Any]) -> dict[str, Any]:

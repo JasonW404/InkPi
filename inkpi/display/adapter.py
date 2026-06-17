@@ -31,21 +31,9 @@ class EPDAdapter:
     Falls back to simulation mode when hardware is unavailable.
     """
     
-    def __init__(self, width: int = 800, height: int = 480, orientation: str | None = None) -> None:
-        """Initialize EPD adapter.
-        
-        Args:
-            width: Display width in pixels.
-            height: Display height in pixels.
-            orientation: Display orientation (landscape, landscape-reverse, vertical, vertical-reverse).
-        """
-        import os
+    def __init__(self, width: int = 800, height: int = 480, orientation: str = "landscape") -> None:
         self._width = width
         self._height = height
-        if orientation is None:
-            from inkpi.config import _load_dotenv_file
-            _load_dotenv_file()
-            orientation = os.getenv("EINK_ORIENTATION", "landscape")
         orientation_map = {
             "landscape": 0,
             "landscape-reverse": 180,
