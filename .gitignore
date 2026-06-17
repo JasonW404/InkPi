@@ -16,6 +16,9 @@ wheels/
 *.png
 *.jpg
 
+# Test and cache
+.pytest_cache/
+
 # Runtime artifacts
 logs/
 .lgd-*
