@@ -24,9 +24,9 @@ def build_data_service(
 ) -> DashboardDataService:
     """Build shared dashboard data service used by runtime and preview modes."""
 
-    weather_adapter = OpenMeteoAdapter(timeout_seconds=8)
-    github_adapter = GitHubApiAdapter(api_key=config.github.api_key, timeout_seconds=12)
-    knowledge_card_adapter = KnowledgeCardRemoteAdapter(timeout_seconds=8)
+    weather_adapter = OpenMeteoAdapter(timeout_seconds=config.adapters.weather_timeout_seconds)
+    github_adapter = GitHubApiAdapter(api_key=config.github.api_key, timeout_seconds=config.adapters.github_timeout_seconds)
+    knowledge_card_adapter = KnowledgeCardRemoteAdapter(timeout_seconds=config.adapters.knowledge_card_timeout_seconds)
 
     return DashboardDataService(
         date_time_provider=DateTimeService(config),
@@ -34,7 +34,7 @@ def build_data_service(
         system_provider=system_provider or SystemService(),
         github_provider=GitHubService(config, api_adapter=github_adapter),
         card_provider=KnowledgeCardService(config, remote_adapter=knowledge_card_adapter),
-        codex_provider=codex_provider or CodexUsageService(),
+        codex_provider=codex_provider or CodexUsageService(rpc_timeout_seconds=config.scheduler.codex_rpc_timeout_seconds),
     )
 
 

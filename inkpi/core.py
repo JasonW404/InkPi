@@ -125,17 +125,18 @@ def build_core(
         config_path=path,
     )
     
-    weather_adapter = OpenMeteoAdapter(timeout_seconds=8)
-    github_adapter = GitHubApiAdapter(api_key=config.github.api_key, timeout_seconds=12)
-    knowledge_card_adapter = KnowledgeCardRemoteAdapter(timeout_seconds=8)
+    weather_adapter = OpenMeteoAdapter(timeout_seconds=config.adapters.weather_timeout_seconds)
+    github_adapter = GitHubApiAdapter(api_key=config.github.api_key, timeout_seconds=config.adapters.github_timeout_seconds)
+    knowledge_card_adapter = KnowledgeCardRemoteAdapter(timeout_seconds=config.adapters.knowledge_card_timeout_seconds)
     
     scheduler = DataScheduler(
         system_provider=SystemService(),
         weather_provider=WeatherService(config, meteo_adapter=weather_adapter),
         github_provider=GitHubService(config, api_adapter=github_adapter),
         card_provider=KnowledgeCardService(config, remote_adapter=knowledge_card_adapter),
-        codex_provider=CodexUsageService(),
+        codex_provider=CodexUsageService(rpc_timeout_seconds=config.scheduler.codex_rpc_timeout_seconds),
         datetime_provider=DateTimeService(config),
+        scheduler_config=config.scheduler,
     )
     
     return InkPiCore(
