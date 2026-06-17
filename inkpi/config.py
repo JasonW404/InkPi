@@ -74,6 +74,7 @@ class DisplayConfig:
     partial_change_ratio: float = 0.12
     region_repair_threshold: int = 30
     region_padding: int = 8
+    orientation: str = "landscape"
 
 
 @dataclass(frozen=True)
@@ -126,6 +127,26 @@ class KnowledgeCardConfig:
 
 
 @dataclass(frozen=True)
+class SchedulerConfig:
+    system_interval_seconds: float = 30.0
+    system_timeout_seconds: float = 10.0
+    weather_interval_seconds: float = 3600.0
+    weather_timeout_seconds: float = 30.0
+    github_interval_seconds: float = 21600.0
+    github_timeout_seconds: float = 180.0
+    codex_interval_seconds: float = 300.0
+    codex_timeout_seconds: float = 30.0
+    codex_rpc_timeout_seconds: float = 20.0
+
+
+@dataclass(frozen=True)
+class AdaptersConfig:
+    weather_timeout_seconds: int = 8
+    github_timeout_seconds: int = 12
+    knowledge_card_timeout_seconds: int = 8
+
+
+@dataclass(frozen=True)
 class InkPiConfig:
     schema_version: int = 1
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
@@ -133,6 +154,8 @@ class InkPiConfig:
     github: GitHubConfig = field(default_factory=GitHubConfig)
     weather: WeatherConfig = field(default_factory=WeatherConfig)
     knowledge_card: KnowledgeCardConfig = field(default_factory=KnowledgeCardConfig)
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
+    adapters: AdaptersConfig = field(default_factory=AdaptersConfig)
 
 
 class ConfigError(ValueError):
@@ -163,6 +186,8 @@ def load_config(path: str | Path | None = None) -> InkPiConfig:
         github=config.github.with_secrets(),
         weather=config.weather.with_secrets(),
         knowledge_card=config.knowledge_card,
+        scheduler=config.scheduler,
+        adapters=config.adapters,
     )
 
 
@@ -208,6 +233,11 @@ def parse_config(raw: dict[str, Any]) -> InkPiConfig:
     if not 0 <= region_padding <= 64:
         raise ConfigError("region_padding must be between 0 and 64")
 
+    orientation = str(display_raw.get("orientation", "landscape"))
+    valid_orientations = {"landscape", "landscape-reverse", "vertical", "vertical-reverse"}
+    if orientation not in valid_orientations:
+        raise ConfigError(f"orientation must be one of {valid_orientations}")
+
     github_raw = raw.get("github") or {}
     github_username = str(github_raw.get("username", GitHubConfig.username))
     github_org = str(github_raw.get("organization", GitHubConfig.organization))
@@ -226,6 +256,26 @@ def parse_config(raw: dict[str, Any]) -> InkPiConfig:
     card_remote_enabled = bool(card_raw.get("remote_enabled", False))
     card_remote_url = str(card_raw.get("remote_url", ""))
 
+    scheduler_raw = raw.get("scheduler") or {}
+    scheduler = SchedulerConfig(
+        system_interval_seconds=float(scheduler_raw.get("system_interval_seconds", 30.0)),
+        system_timeout_seconds=float(scheduler_raw.get("system_timeout_seconds", 10.0)),
+        weather_interval_seconds=float(scheduler_raw.get("weather_interval_seconds", 3600.0)),
+        weather_timeout_seconds=float(scheduler_raw.get("weather_timeout_seconds", 30.0)),
+        github_interval_seconds=float(scheduler_raw.get("github_interval_seconds", 21600.0)),
+        github_timeout_seconds=float(scheduler_raw.get("github_timeout_seconds", 180.0)),
+        codex_interval_seconds=float(scheduler_raw.get("codex_interval_seconds", 300.0)),
+        codex_timeout_seconds=float(scheduler_raw.get("codex_timeout_seconds", 30.0)),
+        codex_rpc_timeout_seconds=float(scheduler_raw.get("codex_rpc_timeout_seconds", 20.0)),
+    )
+
+    adapters_raw = raw.get("adapters") or {}
+    adapters = AdaptersConfig(
+        weather_timeout_seconds=int(adapters_raw.get("weather_timeout_seconds", 8)),
+        github_timeout_seconds=int(adapters_raw.get("github_timeout_seconds", 12)),
+        knowledge_card_timeout_seconds=int(adapters_raw.get("knowledge_card_timeout_seconds", 8)),
+    )
+
     return InkPiConfig(
         dashboard=DashboardConfig(rotation_interval_seconds=rotation, pages=pages),
         display=DisplayConfig(
@@ -235,6 +285,7 @@ def parse_config(raw: dict[str, Any]) -> InkPiConfig:
             partial_change_ratio=partial,
             region_repair_threshold=region_repair,
             region_padding=region_padding,
+            orientation=orientation,
         ),
         github=GitHubConfig(
             username=github_username,
@@ -252,6 +303,8 @@ def parse_config(raw: dict[str, Any]) -> InkPiConfig:
             remote_enabled=card_remote_enabled,
             remote_url=card_remote_url,
         ),
+        scheduler=scheduler,
+        adapters=adapters,
     )
 
 
