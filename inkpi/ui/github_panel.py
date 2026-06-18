@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from math import cos, pi, sin
 from typing import TYPE_CHECKING, cast
 
 from PIL import Image
@@ -58,13 +59,13 @@ class GitHubPanel:
         org_code_lines = max(0, github.organization_user_monthly_code_lines)
 
         # Tunable layout coordinates, all relative to this GitHub panel.
-        stats_x = content_x + 48
-        stats_y = y + 20
-        stats_width = 480
+        stats_x = content_x
+        stats_y = y + 10
+        stats_width = 536
 
-        calendar_width = 188
-        calendar_height = self._height - y - MARGIN
-        calendar_x = self._width - MARGIN - calendar_width
+        calendar_width = 183
+        calendar_height = 156
+        calendar_x = self._width - MARGIN - calendar_width - 1
         calendar_y = MARGIN
 
         self._render_stats_dashboard(
@@ -104,10 +105,9 @@ class GitHubPanel:
     ) -> None:
         """Render the numeric stats column."""
 
-        gap = 80
-        column_width = max(138, (width - gap) // 2)
-        total_width = column_width * 2 + gap
-        start_x = x + max(0, (width - total_width) // 2)
+        gap = 40
+        column_width = 248
+        start_x = x
         start_y = y
         self._render_metric_group(
             image=image,
@@ -154,11 +154,10 @@ class GitHubPanel:
         label_width = draw.textbbox((0, 0), group_label, font=label_font)[2]
         label_x = x + max(0, (width - label_width) // 2)
         draw_text(image, (int(label_x), y), group_label, fill=GRAY_BLACK, font_size=label_size, font_weight="semibold")
-        metric_y = y + TEXT_LINE_HEIGHT + 12
-        metric_gap = 80
-        metric_total_width = max(1, width - metric_gap)
-        commits_width = max(1, metric_total_width * 2 // 5)
-        lines_width = max(1, metric_total_width - commits_width)
+        metric_y = y + 39
+        metric_gap = 8
+        commits_width = 120
+        lines_width = 120
         self._render_stacked_metric(image, x, metric_y, commits_width, "COMMITS", commits, 5, font_size)
         self._render_stacked_metric(
             image,
@@ -217,28 +216,17 @@ class GitHubPanel:
         days = (end_date - start_date).days + 1
         cols = 7
         display_rows = max(1, days // 7)
-        header_height = 16
-        cell_spacing = 5
-        row_spacing = 3
-        dot_space = 5
-        available_width = max(1, width)
-        available_height = max(1, height)
-        cell_from_width = (available_width - (cols - 1) * cell_spacing) // cols
-        cell_from_height = (
-            available_height - header_height - (display_rows - 1) * row_spacing - dot_space
-        ) // display_rows
-        cell_size = max(8, min(cell_from_width, cell_from_height, 30))
-        grid_width = cols * cell_size + (cols - 1) * cell_spacing
-        calendar_x = x + max(0, width - grid_width)
+        header_height = 20
+        cell_spacing = 7
+        row_spacing = 7
+        cell_size = 20
+        calendar_x = x
         weekdays = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"]
-        draw = ImageDraw.Draw(image)
-        weekday_font = self._load_font(FONT_SIZE_SMALL)
         for col, weekday in enumerate(weekdays):
-            label_width = draw.textbbox((0, 0), weekday, font=weekday_font)[2]
-            label_x = calendar_x + col * (cell_size + cell_spacing) + max(0, (cell_size - label_width) // 2)
+            label_x = calendar_x + col * (cell_size + cell_spacing)
             draw_text(image, (int(label_x), y), weekday, fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
 
-        grid_y = y + header_height + row_spacing
+        grid_y = y + header_height + 4
 
         contrib_map = {item.day: item.commit_count for item in github.contributions}
 
@@ -254,23 +242,15 @@ class GitHubPanel:
             cell_x = calendar_x + col * (cell_size + cell_spacing)
             cell_y = grid_y + row * (cell_size + row_spacing)
 
-            draw_rect(
-                image,
-                (cell_x, cell_y, cell_x + cell_size, cell_y + cell_size),
-                fill=fill,
-                outline=GRAY_MID,
-                width=1,
-            )
-
             if current_date == today:
-                dot_size = max(3, min(5, cell_size // 6))
-                dot_x = cell_x + (cell_size - dot_size) // 2
-                dot_y = cell_y + cell_size + 3
-                draw = ImageDraw.Draw(image)
-                draw.ellipse(
-                    (dot_x, dot_y, dot_x + dot_size, dot_y + dot_size),
-                    fill=GRAY_BLACK,
-                    outline=GRAY_BLACK,
+                self._draw_today_star(image, cell_x, cell_y, cell_size)
+            else:
+                draw_rect(
+                    image,
+                    (cell_x, cell_y, cell_x + cell_size, cell_y + cell_size),
+                    fill=fill,
+                    outline=GRAY_MID,
+                    width=1,
                 )
 
     @staticmethod
@@ -282,6 +262,20 @@ class GitHubPanel:
         if commit_count <= 5:
             return GRAY_MID
         return GRAY_BLACK
+
+    @staticmethod
+    def _draw_today_star(image: Image.Image, x: int, y: int, size: int) -> None:
+        draw = ImageDraw.Draw(image)
+        center_x = x + size / 2
+        center_y = y + size / 2
+        outer = size / 2 - 1
+        inner = outer * 0.45
+        points: list[tuple[float, float]] = []
+        for index in range(10):
+            radius = outer if index % 2 == 0 else inner
+            angle = -pi / 2 + index * pi / 5
+            points.append((center_x + cos(angle) * radius, center_y + sin(angle) * radius))
+        draw.polygon(points, fill=GRAY_BLACK, outline=GRAY_MID)
 
     def _fit_label_text(
         self,

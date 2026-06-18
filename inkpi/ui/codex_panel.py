@@ -65,13 +65,13 @@ class CodexPanel:
         column_gap = 20
         column_width = (content_width - column_gap) // 2
         bar_height = 16
-        bar_width = column_width - 10
 
         windows = codex.windows[:2]
 
         for index, window in enumerate(windows):
             col_x = content_x + index * (column_width + column_gap)
             remaining = max(0, min(100, window.remaining_percent))
+            bar_width = 374 if index == 0 else 373
 
             draw_text(image, (col_x, y), window.label, fill=GRAY_MID, font_size=FONT_SIZE_SMALL, font_weight="semibold")
 
@@ -87,7 +87,7 @@ class CodexPanel:
                 font_weight="bold",
             )
 
-            bar_y = y + 22
+            bar_y = y + 26
             draw_rect(
                 image,
                 (col_x, bar_y, col_x + bar_width, bar_y + bar_height),
