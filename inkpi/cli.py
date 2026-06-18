@@ -10,6 +10,7 @@ from inkpi.config import load_config
 from inkpi.core import DEFAULT_CORE_SOCKET, run_core_service
 from inkpi.dashboard.controller import DashboardController
 from inkpi.dashboard.pages.overview import OverviewPage
+from inkpi.dashboard.preview_data import make_mock_overview_snapshot
 from inkpi.display.service import DEFAULT_SOCKET, run_display_service
 from inkpi.ipc import request
 
@@ -67,12 +68,18 @@ def preview_main() -> None:
     parser.add_argument("page", choices=["overview"], default="overview", nargs="?")
     parser.add_argument("--output")
     parser.add_argument("--config")
+    parser.add_argument(
+        "--mock-data",
+        action="store_true",
+        help="Render with static mock data instead of live collectors.",
+    )
     args = parser.parse_args()
     _logging()
     pages = [OverviewPage()]
     controller = DashboardController(pages, load_config(args.config))
     page = next(item for item in pages if item.page_id == args.page)
-    image = page.render(page.collect())
+    snapshot = make_mock_overview_snapshot() if args.mock_data else page.collect()
+    image = page.render(snapshot)
     output = Path(args.output or f"{args.page}-preview.png")
     image.save(output)
     print(output.resolve())
