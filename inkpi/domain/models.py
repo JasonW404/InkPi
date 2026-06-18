@@ -20,12 +20,10 @@ class GitHubMonthlyStats:
 
     month: str
     contributions: list[GitHubContributionDay]
+    user_monthly_commit_count: int
     user_monthly_code_lines: int
-    organization_repo_count: int
-    organization_monthly_commit_count: int
-    organization_monthly_code_lines: int
-    organization_additions: int
-    organization_deletions: int
+    organization_user_monthly_commit_count: int
+    organization_user_monthly_code_lines: int
 
 
 @dataclass(frozen=True)
