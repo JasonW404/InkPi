@@ -60,7 +60,7 @@ def test_dashboard_data_service_collects_complete_snapshot() -> None:
     assert snapshot.date_time.timezone == "UTC"
     assert snapshot.weather.summary == "clear"
     assert snapshot.system.load_level == 1
-    assert snapshot.github.organization_repo_count == 2
+    assert snapshot.github.organization_user_monthly_commit_count == 8
     assert snapshot.card.title == "Sample"
     assert snapshot.network.connection_type == "wifi"
     assert snapshot.codex.plan == "PRO"

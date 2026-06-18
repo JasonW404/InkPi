@@ -54,6 +54,9 @@ class FakeGitHubAdapter:
     def fetch_accessible_org_repositories(self, organization: str) -> list[str]:
         return []
 
+    def fetch_user_repositories(self, username: str) -> list[str]:
+        return [f"{username}/personal-repo"]
+
     def fetch_repo_commits(
         self,
         organization: str,
@@ -61,12 +64,32 @@ class FakeGitHubAdapter:
         since: str,
         until: str,
         author: str | None = None,
+        sha: str | None = None,
     ) -> list[dict[str, object]]:
+        if organization == "tester" and repo_name == "personal-repo":
+            return [
+                {
+                    "sha": "sha-personal",
+                    "author": {"login": "tester"},
+                    "commit": {"author": {"date": "2026-06-11T00:00:00Z"}},
+                }
+            ]
         return [
             {
-                "sha": "sha-1",
+                "sha": "sha-org",
                 "author": {"login": "tester"},
-                "commit": {"author": {"date": "2026-02-10T00:00:00Z"}},
+                "commit": {"author": {"date": "2026-06-10T00:00:00Z"}},
+            },
+            {
+                "sha": "sha-coauthored-org",
+                "author": {"login": "reviewer"},
+                "commit": {
+                    "author": {"date": "2026-06-12T00:00:00Z"},
+                    "message": (
+                        "Merge pull request #1 from tester/feature\n\n"
+                        "Co-authored-by: Tester <12345+tester@users.noreply.github.com>"
+                    ),
+                },
             }
         ]
 
@@ -79,6 +102,10 @@ class FakeGitHubAdapter:
         repo_name: str,
         commit_sha: str,
     ) -> tuple[int, int]:
+        if commit_sha == "sha-personal":
+            return 4, 1
+        if commit_sha == "sha-coauthored-org":
+            return 7, 2
         return 10, 3
 
 
@@ -127,8 +154,7 @@ def test_github_service_uses_adapter_contract() -> None:
 
     stats = service.get_monthly_stats()
 
-    assert stats.organization_repo_count == 1
-    assert stats.organization_monthly_commit_count == 1
-    assert stats.organization_additions == 10
-    assert stats.organization_deletions == 3
-    assert stats.user_monthly_code_lines == 13
+    assert stats.user_monthly_commit_count == 3
+    assert stats.user_monthly_code_lines == 27
+    assert stats.organization_user_monthly_commit_count == 2
+    assert stats.organization_user_monthly_code_lines == 22

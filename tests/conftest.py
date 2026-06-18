@@ -85,12 +85,10 @@ def sample_github() -> GitHubMonthlyStats:
     return GitHubMonthlyStats(
         month="2026-02",
         contributions=[],
+        user_monthly_commit_count=10,
         user_monthly_code_lines=100,
-        organization_repo_count=2,
-        organization_monthly_commit_count=8,
-        organization_monthly_code_lines=200,
-        organization_additions=120,
-        organization_deletions=80,
+        organization_user_monthly_commit_count=8,
+        organization_user_monthly_code_lines=80,
     )
 
 
