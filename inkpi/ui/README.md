@@ -10,37 +10,42 @@ src/ui/
 ├── constants.py         # 屏幕尺寸与灰度常量
 ├── drawing.py           # 绘图工具函数
 ├── renderer.py          # 主渲染器（组合所有面板）
-├── sidebar_panel.py     # 左侧信息栏（日期/天气/系统）
-├── knowledge_card_panel.py  # 知识卡片面板
+├── codex_panel.py       # Codex 用量面板
 └── github_panel.py      # GitHub 统计面板
 ```
 
 ## Layout
 
 ```
-┌─────────────┬────────────────────────────────┐
-│             │                                │
-│  Sidebar    │     Knowledge Card Panel      │
-│  (200px)    │                                │
-│             ├────────────────────────────────┤
-│  Date/Time  │                                │
-│  Weather    │      GitHub Statistics        │
-│  System     │      & Contribution Calendar  │
-│             │                                │
-└─────────────┴────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ Date / Time / Weather / Version              │
+├──────────────────────────────────────────────┤
+│ GitHub User Metrics       Contribution Month │
+├──────────────────────────────────────────────┤
+│ Codex Usage: 5-hour window | Weekly window   │
+├───────────────────────┬──────────────────────┤
+│ System                │ Network              │
+└───────────────────────┴──────────────────────┘
      800 x 480 (landscape)
 ```
+
+The GitHub panel shows only four numeric metrics: configured user commits,
+configured user code line changes, that user's commits in the configured
+organization, and that user's organization-scoped code line changes.
+Dynamic values use fixed-width fields and stable coordinates so refreshes do
+not shift neighboring content.
 
 ## Usage
 
 ### Generate Preview
 
 ```bash
-uv run inkpi-preview overview
-uv run inkpi-preview codex_usage
+uv run inkpi-preview overview --mock-data --output tmp/overview.png
+uv run inkpi-preview overview --output tmp/overview-live.png
 ```
 
 这会生成 PNG 预览文件用于验证布局和灰度效果。
+本地仿真和测试生成的 preview 图片应写入项目内 `tmp/` 目录。
 
 ### In Application
 
@@ -55,8 +60,8 @@ uv run inkpi-preview codex_usage
 4 灰度级别定义在 `constants.py`：
 
 - `GRAY_WHITE = 255` （白色背景）
-- `GRAY_LIGHT = 170` （浅灰）
-- `GRAY_MID = 85` （中灰）
+- `GRAY_LIGHT = 140` （浅灰）
+- `GRAY_MID = 60` （中灰）
 - `GRAY_BLACK = 0` （黑色文字）
 
 ## Panel Customization

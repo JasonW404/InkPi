@@ -12,13 +12,11 @@ from inkpi.ui.constants import (
     FONT_SIZE_LARGE,
     FONT_SIZE_NORMAL,
     FONT_SIZE_SMALL,
-    FONT_SIZE_TITLE,
     GRAY_BLACK,
     GRAY_LIGHT,
     GRAY_MID,
     GRAY_WHITE,
     MARGIN,
-    TITLE_LINE_HEIGHT,
 )
 from inkpi.ui.drawing import draw_line, draw_rect, draw_text, truncate_text
 
@@ -40,14 +38,11 @@ class CodexPanel:
         content_width = self._width - 2 * MARGIN
 
         draw = ImageDraw.Draw(image)
-        large_font = self._load_font(FONT_SIZE_LARGE)
         normal_font = self._load_font(FONT_SIZE_NORMAL)
         small_font = self._load_font(FONT_SIZE_SMALL)
 
-        y = 6
-        draw_text(image, (content_x, y), "CODEX", fill=GRAY_BLACK, font_size=FONT_SIZE_LARGE, font_weight="bold")
-        codex_w = draw.textbbox((0, 0), "CODEX", font=large_font)[2]
-        draw_text(image, (content_x + codex_w + 8, y), "USAGE", fill=GRAY_MID, font_size=FONT_SIZE_LARGE)
+        y = 8
+        draw_text(image, (content_x, y), "CODEX USAGE", fill=GRAY_BLACK, font_size=FONT_SIZE_LARGE, font_weight="bold")
 
         plan_text = codex.plan.upper()
         plan_w = draw.textbbox((0, 0), plan_text, font=small_font)[2]
@@ -59,8 +54,6 @@ class CodexPanel:
         draw_text(image, (int(plan_x), y + 4), plan_text, fill=GRAY_BLACK, font_size=FONT_SIZE_SMALL)
         draw_text(image, (int(status_x), y + 4), status_text, fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
 
-        y = 34
-        draw_line(image, (content_x, y, content_x + content_width, y), fill=GRAY_MID, width=1)
         y = 40
 
         if not codex.ok or not codex.windows:
@@ -82,7 +75,7 @@ class CodexPanel:
 
             draw_text(image, (col_x, y), window.label, fill=GRAY_MID, font_size=FONT_SIZE_SMALL, font_weight="semibold")
 
-            percent_text = f"{remaining:.0f}%"
+            percent_text = f"{int(round(remaining)):>3}%"
             percent_w = draw.textbbox((0, 0), percent_text, font=normal_font)[2]
             percent_x = col_x + column_width - percent_w
             draw_text(
@@ -111,7 +104,13 @@ class CodexPanel:
                 )
 
             countdown = _countdown(window.resets_at)
-            draw_text(image, (col_x, bar_y + bar_height + 4), f"RESET IN  {countdown}", fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
+            draw_text(
+                image,
+                (col_x, bar_y + bar_height + 4),
+                f"RESET {countdown:>8}",
+                fill=GRAY_MID,
+                font_size=FONT_SIZE_SMALL,
+            )
 
         if len(windows) > 1:
             sep_x = content_x + column_width + column_gap // 2
