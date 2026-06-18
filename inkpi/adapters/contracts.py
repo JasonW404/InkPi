@@ -55,6 +55,11 @@ class GitHubApiClient(Protocol):
 
         ...
 
+    def fetch_user_repositories(self, username: str) -> list[str]:
+        """Fetch repository full names owned by a user."""
+
+        ...
+
     def fetch_repo_commits(
         self,
         organization: str,

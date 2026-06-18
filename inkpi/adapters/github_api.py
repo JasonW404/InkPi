@@ -132,6 +132,51 @@ class GitHubApiAdapter:
             unique.append(name)
         return unique
 
+    def fetch_user_repositories(self, username: str) -> list[str]:
+        """Fetch repository full names owned by a user.
+
+        Authenticated requests use /user/repos so private repositories owned by
+        the token user can be included. Anonymous requests fall back to public
+        user repositories.
+        """
+
+        repository_names: list[str] = []
+        page = 1
+        if self._api_key:
+            url = "https://api.github.com/user/repos"
+            base_params: dict[str, object] = {
+                "visibility": "all",
+                "affiliation": "owner",
+                "per_page": 100,
+            }
+        else:
+            url = f"https://api.github.com/users/{username}/repos"
+            base_params = {"type": "owner", "per_page": 100}
+
+        while True:
+            params = {**base_params, "page": page}
+            payload = self._get_json(url, params=params)
+            if not isinstance(payload, list) or not payload:
+                break
+
+            for repo in payload:
+                if not isinstance(repo, dict):
+                    continue
+                owner = ((repo.get("owner") or {}) if isinstance(repo.get("owner"), dict) else {}).get("login", "")
+                full_name = repo.get("full_name", "")
+                if owner == username and full_name:
+                    repository_names.append(str(full_name))
+            page += 1
+
+        seen: set[str] = set()
+        unique: list[str] = []
+        for name in repository_names:
+            if name in seen:
+                continue
+            seen.add(name)
+            unique.append(name)
+        return unique
+
     def fetch_repo_commits(
         self,
         organization: str,
