@@ -59,12 +59,13 @@ uv sync --extra rpi
 Render pages without display hardware:
 
 ```bash
-uv run inkpi-preview overview --output /tmp/overview.png
-uv run inkpi-preview codex_usage --output /tmp/codex-usage.png
+uv run inkpi-preview overview --mock-data --output tmp/overview.png
+uv run inkpi-preview overview --output tmp/overview-live.png
 ```
 
 Every page must render an exact `800x480` grayscale image. Preview both changed
-and failure states when modifying a page.
+and failure states when modifying a page. Use `--mock-data` for fast UI layout
+iteration without network or Codex subprocess collection.
 
 ## Run Services Locally
 

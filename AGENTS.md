@@ -61,6 +61,8 @@ git diff --check
 For packaging or entrypoint changes, also run `uv build`.
 
 For page changes, render and inspect the relevant `inkpi-preview` output.
+Preview images created for tests or local simulation must be written under the
+project `tmp/` directory, not system `/tmp`.
 
 For display, service, or deployment changes, run a local two-service smoke test
 and then validate on `meta_pi`. Clearly report whether verification was

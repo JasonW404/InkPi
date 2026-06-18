@@ -24,8 +24,7 @@ InkPi uses Python 3.12 and `uv`.
 ```bash
 uv sync --extra dev
 uv run pytest -q
-uv run inkpi-preview overview
-uv run inkpi-preview codex_usage
+uv run inkpi-preview overview --mock-data --output tmp/overview.png
 ```
 
 Pi-only GPIO/SPI dependencies are isolated from local development:
@@ -66,7 +65,7 @@ The installer disables the legacy `eink-dashboard.service` so only
 
 ## Built-In Pages
 
-- `overview`: weather, system load, knowledge card, and GitHub statistics.
+- `overview`: weather, system load, Codex usage, and GitHub statistics.
 - `codex_usage`: native PIL rendering of Codex subscription usage. Live data
   requires an installed and logged-in Codex CLI on the Pi.
 
