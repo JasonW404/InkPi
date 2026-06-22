@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-SERVICES=(inkpi-display.service inkpi-core.service)
+SERVICES=(inkpi-display.service inkpi-core.service inkpi-admin.service)
 
 if [[ ${EUID} -ne 0 ]]; then
   echo "Please run as root: sudo bash scripts/systemd/install_inkpi_services.sh" >&2
@@ -51,12 +51,14 @@ done
 systemctl daemon-reload
 systemctl disable --now eink-dashboard.service 2>/dev/null || true
 systemctl reset-failed eink-dashboard.service 2>/dev/null || true
-systemctl enable inkpi-display.service inkpi-core.service
+systemctl enable inkpi-display.service inkpi-core.service inkpi-admin.service
 
 # Keep hardware ownership unambiguous during install and upgrades.
+systemctl stop inkpi-admin.service 2>/dev/null || true
 systemctl stop inkpi-core.service 2>/dev/null || true
 systemctl restart inkpi-display.service
 systemctl start inkpi-core.service
+systemctl start inkpi-admin.service
 
 echo "InkPi services installed."
-echo "Check: systemctl status inkpi-display.service inkpi-core.service"
+echo "Check: systemctl status inkpi-display.service inkpi-core.service inkpi-admin.service"

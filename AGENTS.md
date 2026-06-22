@@ -9,13 +9,17 @@ All contributors and coding agents working in this repository must follow
 - Version: `0.2.0`
 - Target: Raspberry Pi 4B with Waveshare 4.26-inch `800x480` e-ink HAT
 - Architecture: hybrid multi-process runtime
-- Main services: `inkpi-core` and `inkpi-display`
-- Built-in pages: `overview` and `codex_usage`
+- Main services: `inkpi-core`, `inkpi-display`, and `inkpi-admin`
+- Built-in pages: `overview` (registered); `codex_usage` panel exists but is
+  not yet a standalone page
 - Configuration: versioned JSON owned by core, secrets supplied through `.env`
 - Management state: read-only system/network facts and dashboard controls exist;
-  web portal and NetworkManager write controls are future work
-- Migration state: the legacy `src/` package remains for overview data/rendering
-  and the Waveshare adapter; new ownership and orchestration belong in `inkpi/`
+  admin portal serves LAN/hotspot access; NetworkManager write controls are
+  future work
+- Font state: all rendering fonts are bundled in `inkpi/fonts/` with no system
+  font fallbacks; architecture tests enforce this policy
+- CI state: GitHub Actions runs test (macOS+Ubuntu), ruff lint, and dual-service
+  smoke test on every push and PR
 - Deployment target: `meta_pi:/home/meta/Documents/InkPi`
 
 ## Non-Negotiable Boundaries
@@ -54,7 +58,7 @@ For normal changes:
 ```bash
 uv sync --extra dev
 uv run pytest -q
-uv run python -m compileall -q inkpi src tests
+uv run python -m compileall -q inkpi tests
 git diff --check
 ```
 
@@ -75,7 +79,11 @@ simulation-only or used the physical panel.
 
 ## Key References
 
-- [Developer Guide](docs/developer-guide.md)
-- [Architecture](docs/inkpi-architecture.md)
+- [Documentation Home](docs/index.md) (MkDocs site: `uv run mkdocs serve`)
+- [About InkPi](docs/about.md)
+- [Architecture](docs/architecture.md)
+- [Developer Guide](docs/guides/developer-guide.md)
+- [Deployment Guide](docs/guides/deployment.md)
+- [Development Plan](docs/development/plan.md)
 - [Example Configuration](config/inkpi.example.json)
 - [Engineering Guidelines](.github/copilot-instructions.md)

@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from typing import cast
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from inkpi.ui.constants import (
     FONT_SIZE_LARGE,
@@ -18,7 +17,7 @@ from inkpi.ui.constants import (
     GRAY_WHITE,
     MARGIN,
 )
-from inkpi.ui.drawing import draw_line, draw_rect, draw_text, truncate_text
+from inkpi.ui.drawing import _load_font, draw_line, draw_rect, draw_text, truncate_text
 
 if TYPE_CHECKING:
     from inkpi.domain.models import CodexUsageInfo
@@ -38,8 +37,8 @@ class CodexPanel:
         content_width = self._width - 2 * MARGIN
 
         draw = ImageDraw.Draw(image)
-        normal_font = self._load_font(FONT_SIZE_NORMAL)
-        small_font = self._load_font(FONT_SIZE_SMALL)
+        normal_font = _load_font(FONT_SIZE_NORMAL)
+        small_font = _load_font(FONT_SIZE_SMALL)
 
         y = 8
         draw_text(image, (content_x, y), "CODEX USAGE", fill=GRAY_BLACK, font_size=FONT_SIZE_LARGE, font_weight="bold")
@@ -117,21 +116,6 @@ class CodexPanel:
             draw_line(image, (sep_x, y, sep_x, self._height - 6), fill=GRAY_LIGHT, width=1)
 
         return image
-
-    @staticmethod
-    def _load_font(font_size: int) -> ImageFont.ImageFont:
-        candidates = [
-            "assets/fonts/MapleMono-CN-Regular.ttf",
-            "assets/fonts/MapleMono.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        ]
-        for path in candidates:
-            try:
-                return cast(ImageFont.ImageFont, ImageFont.truetype(path, font_size))
-            except OSError:
-                continue
-        return cast(ImageFont.ImageFont, ImageFont.load_default())
-
 
 def _countdown(value: str | None) -> str:
     if not value:

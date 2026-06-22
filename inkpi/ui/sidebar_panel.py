@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from importlib.metadata import version as pkg_version
 from typing import TYPE_CHECKING
-from typing import cast
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 from inkpi.ui.constants import (
     FONT_SIZE_NORMAL,
@@ -20,7 +19,7 @@ from inkpi.ui.constants import (
     TEXT_LINE_HEIGHT,
     TITLE_LINE_HEIGHT,
 )
-from inkpi.ui.drawing import draw_rect, draw_text, truncate_text
+from inkpi.ui.drawing import _load_font, _load_icon_font, draw_rect, draw_text, truncate_text
 
 if TYPE_CHECKING:
     from inkpi.domain.models import DateTimeInfo, NetworkInfo, SystemStatus, WeatherInfo
@@ -48,7 +47,7 @@ class SidebarPanel:
         if weather.temperature_celsius is not None:
             temp_str = f"{weather.temperature_celsius:.1f}°C"
             icon_str = self._weather_icon(weather.icon)
-            icon_font = self._load_icon_font(temp_size)
+            icon_font = _load_icon_font(temp_size)
             draw = ImageDraw.Draw(image)
             draw.text((MARGIN, y), icon_str, fill=GRAY_BLACK, font=icon_font)
             icon_width = draw.textbbox((0, 0), icon_str, font=icon_font)[2]
@@ -75,8 +74,8 @@ class SidebarPanel:
         detail_size = FONT_SIZE_SMALL
         value_size = FONT_SIZE_NORMAL
         metrics_draw = ImageDraw.Draw(image)
-        detail_font = self._load_font(detail_size)
-        value_font = self._load_font(value_size)
+        detail_font = _load_font(detail_size)
+        value_font = _load_font(value_size)
 
         self._draw_bold_text(image, (MARGIN, y), "CPU", fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
         y += TEXT_LINE_HEIGHT - 2
@@ -212,7 +211,7 @@ class SidebarPanel:
         draw_text(image, (MARGIN, y), ip_text, fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
 
         version_text = f"InkPi v{_inkpi_version()}"
-        version_font = self._load_font(FONT_SIZE_SMALL)
+        version_font = _load_font(FONT_SIZE_SMALL)
         draw = ImageDraw.Draw(image)
         version_w = draw.textbbox((0, 0), version_text, font=version_font)[2]
         draw_text(
@@ -238,22 +237,6 @@ class SidebarPanel:
         draw_text(image, xy, text, fill=fill, font_size=font_size, font_weight="semibold")
 
     @staticmethod
-    def _load_font(font_size: int) -> ImageFont.ImageFont:
-        """Load UI font for measurements with fallback."""
-
-        candidates = [
-            "assets/fonts/MapleMono-CN-Regular.ttf",
-            "assets/fonts/MapleMono.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        ]
-        for path in candidates:
-            try:
-                return cast(ImageFont.ImageFont, ImageFont.truetype(path, font_size))
-            except OSError:
-                continue
-        return cast(ImageFont.ImageFont, ImageFont.load_default())
-
-    @staticmethod
     def _weather_icon(icon_name: str) -> str:
         icon_map = {
             "clear": "☀",
@@ -268,19 +251,6 @@ class SidebarPanel:
             "thunderstorm_hail": "⚡",
         }
         return icon_map.get(icon_name, "?")
-
-    @staticmethod
-    def _load_icon_font(font_size: int) -> ImageFont.ImageFont:
-        for path in (
-            "/usr/share/fonts/truetype/ancient-scripts/Symbola_hint.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        ):
-            try:
-                return cast(ImageFont.ImageFont, ImageFont.truetype(path, font_size))
-            except OSError:
-                continue
-        return cast(ImageFont.ImageFont, ImageFont.load_default())
-
 
 def _inkpi_version() -> str:
     """Return installed InkPi package version, or 'dev' if unavailable."""

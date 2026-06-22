@@ -8,6 +8,7 @@ from pathlib import Path
 from inkpi.contracts import (
     DashboardConfigResult,
     DashboardStatus,
+    DisplayStatus,
     NetworkStatus,
     PageStatus,
     SystemStatus,
@@ -46,3 +47,9 @@ class InkPiClient:
 
     def get_network_status(self) -> NetworkStatus:
         return NetworkStatus(**request(self._socket_path, "get_network_status"))
+
+    def get_display_status(self) -> DisplayStatus:
+        return DisplayStatus(**request(self._socket_path, "get_display_status"))
+
+    def get_core_status(self) -> dict:
+        return request(self._socket_path, "get_core_status")

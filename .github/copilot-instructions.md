@@ -3,7 +3,8 @@
 ## Source Of Truth
 
 This file is the authoritative coding guide for the redesigned InkPi project.
-`docs/inkpi-architecture.md` explains the same boundaries for human readers.
+`docs/architecture.md` explains the same boundaries for human readers.
+Documentation is served via MkDocs: `uv run mkdocs serve`.
 
 ## Required Architecture
 
@@ -18,9 +19,7 @@ This file is the authoritative coding guide for the redesigned InkPi project.
 6. Local service IPC uses versioned JSON over Unix sockets.
 7. Slow page collection/rendering must not block control/status requests.
 
-The legacy `src/` package remains reusable during migration for providers,
-rendering panels, and the Waveshare adapter. New orchestration and ownership
-logic belongs under `inkpi/`.
+All orchestration, rendering, and ownership logic belongs under `inkpi/`.
 
 ## Display Rules
 
@@ -50,10 +49,19 @@ logic belongs under `inkpi/`.
 - Local development: `uv sync --extra dev`.
 - Raspberry Pi environment: `uv sync --extra rpi`.
 - Tests: `uv run pytest -q`.
-- Compile check: `uv run python -m compileall -q inkpi src tests`.
-- Previews: `uv run inkpi-preview overview` and
-  `uv run inkpi-preview codex_usage`.
+- Compile check: `uv run python -m compileall -q inkpi tests`.
+- Lint: `uv run ruff check inkpi tests`.
+- Previews: `uv run inkpi-preview overview --mock-data` and
+  `uv run inkpi-preview overview --mock-data --eink-preview`.
 - Never use `pip install`, `python -m venv`, or `virtualenv`.
 
 Pi-only packages must remain in the `rpi` optional dependency group so local
 development and tests do not require GPIO/SPI build tooling.
+
+## Font Policy
+
+All rendering fonts are bundled in `inkpi/fonts/` and loaded via
+`importlib.resources`. System font paths (`/usr/share/fonts`,
+`/System/Library/Fonts`, etc.) are forbidden in source code. Architecture
+tests in `tests/test_font_architecture.py` enforce this policy. New font
+requirements must be bundled and registered in `inkpi/ui/drawing.py`.

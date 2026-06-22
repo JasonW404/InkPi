@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from math import cos, pi, sin
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from PIL import Image
-from PIL import ImageDraw, ImageFont
+from PIL import ImageDraw
 
 from inkpi.ui.constants import (
     FONT_SIZE_LARGE,
@@ -21,7 +21,7 @@ from inkpi.ui.constants import (
     TEXT_LINE_HEIGHT,
     TITLE_LINE_HEIGHT,
 )
-from inkpi.ui.drawing import draw_rect, draw_text
+from inkpi.ui.drawing import _load_font, draw_rect, draw_text
 
 if TYPE_CHECKING:
     from inkpi.domain.models import GitHubMonthlyStats
@@ -150,7 +150,7 @@ class GitHubPanel:
             font_weight="semibold",
         )
         draw = ImageDraw.Draw(image)
-        label_font = self._load_font(label_size, font_weight="semibold")
+        label_font = _load_font(label_size, font_weight="semibold")
         label_width = draw.textbbox((0, 0), group_label, font=label_font)[2]
         label_x = x + max(0, (width - label_width) // 2)
         draw_text(image, (int(label_x), y), group_label, fill=GRAY_BLACK, font_size=label_size, font_weight="semibold")
@@ -183,8 +183,8 @@ class GitHubPanel:
     ) -> int:
         draw = ImageDraw.Draw(image)
         value_text = str(max(0, value))
-        label_font = self._load_font(FONT_SIZE_SMALL)
-        value_font = self._load_font(font_size, font_weight="bold")
+        label_font = _load_font(FONT_SIZE_SMALL)
+        value_font = _load_font(font_size, font_weight="bold")
         label_width = draw.textbbox((0, 0), label, font=label_font)[2]
         value_width = draw.textbbox((0, 0), value_text, font=value_font)[2]
 
@@ -290,13 +290,13 @@ class GitHubPanel:
         text_value = text.strip() or "-"
 
         for size in range(preferred_size, min_size - 1, -1):
-            font = self._load_font(size, font_weight=font_weight)
+            font = _load_font(size, font_weight=font_weight)
             text_width = draw.textbbox((0, 0), text_value, font=font)[2]
             if text_width <= max_width:
                 return text_value, size
 
         size = min_size
-        font = self._load_font(size, font_weight=font_weight)
+        font = _load_font(size, font_weight=font_weight)
         if draw.textbbox((0, 0), text_value, font=font)[2] <= max_width:
             return text_value, size
 
@@ -307,38 +307,6 @@ class GitHubPanel:
             if draw.textbbox((0, 0), candidate, font=font)[2] <= max_width:
                 return candidate, size
         return "...", size
-
-    @staticmethod
-    def _load_font(font_size: int, font_weight: str = "regular") -> ImageFont.ImageFont:
-        """Load the primary UI font with fallback to default font."""
-        weight_candidates = {
-            "regular": ["MapleMono-CN-Regular.ttf", "MapleMono.ttf"],
-            "semibold": [
-                "MapleMono-CN-SemiBold.ttf",
-                "MapleMono-CN-Medium.ttf",
-                "MapleMono-CN-Regular.ttf",
-                "MapleMono.ttf",
-            ],
-            "bold": [
-                "MapleMono-CN-Bold.ttf",
-                "MapleMono-CN-SemiBold.ttf",
-                "MapleMono-CN-Medium.ttf",
-                "MapleMono-CN-Regular.ttf",
-                "MapleMono.ttf",
-            ],
-        }
-        candidates = [
-            f"assets/fonts/{filename}"
-            for filename in weight_candidates.get(font_weight, weight_candidates["regular"])
-        ]
-        candidates.append("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-        for path in candidates:
-            try:
-                return cast(ImageFont.ImageFont, ImageFont.truetype(path, font_size))
-            except OSError:
-                continue
-        return cast(ImageFont.ImageFont, ImageFont.load_default())
-
 
 def _fixed_digit_text(value: int, digits: int) -> str:
     """Return a right-aligned number constrained to a fixed digit field."""

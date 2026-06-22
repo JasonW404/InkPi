@@ -22,3 +22,6 @@ wheels/
 # Runtime artifacts
 logs/
 .lgd-*
+
+# MkDocs build output
+site/

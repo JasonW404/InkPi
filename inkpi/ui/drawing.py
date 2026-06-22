@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path
+from importlib.resources import files
 from typing import TYPE_CHECKING
 from typing import Literal
 
@@ -18,18 +18,14 @@ if TYPE_CHECKING:
 FontWeight = Literal["regular", "medium", "semibold", "bold"]
 
 
+_FONT_DIR = files("inkpi").joinpath("fonts")
+
+
 @lru_cache(maxsize=64)
-def _load_font(font_size: int, font_weight: FontWeight) -> ImageFont.ImageFont:
+def _load_font(font_size: int, font_weight: FontWeight = "regular") -> ImageFont.ImageFont:
     weight_candidates: dict[FontWeight, list[str]] = {
-        "regular": [
-            "MapleMono-CN-Regular.ttf",
-            "MapleMono.ttf",
-        ],
-        "medium": [
-            "MapleMono-CN-Medium.ttf",
-            "MapleMono-CN-Regular.ttf",
-            "MapleMono.ttf",
-        ],
+        "regular": ["MapleMono-CN-Regular.ttf", "MapleMono.ttf"],
+        "medium": ["MapleMono-CN-Medium.ttf", "MapleMono-CN-Regular.ttf", "MapleMono.ttf"],
         "semibold": [
             "MapleMono-CN-SemiBold.ttf",
             "MapleMono-CN-Medium.ttf",
@@ -45,23 +41,23 @@ def _load_font(font_size: int, font_weight: FontWeight) -> ImageFont.ImageFont:
         ],
     }
 
-    font_dir = Path("assets/fonts")
     for filename in weight_candidates.get(font_weight, weight_candidates["regular"]):
-        font_path = font_dir / filename
-        if font_path.exists():
-            try:
-                return ImageFont.truetype(str(font_path), font_size)
-            except OSError:
-                continue
+        font_path = _FONT_DIR.joinpath(filename)
+        try:
+            return ImageFont.truetype(str(font_path), font_size)
+        except OSError:
+            continue
 
+    return ImageFont.load_default()
+
+
+@lru_cache(maxsize=16)
+def _load_icon_font(font_size: int) -> ImageFont.ImageFont:
+    font_path = _FONT_DIR.joinpath("SymbolsNerdFontMono-Regular.ttf")
     try:
-        return ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+        return ImageFont.truetype(str(font_path), font_size)
     except OSError:
-        pass
-    try:
-        return ImageFont.truetype("/usr/share/fonts/truetype/ancient-scripts/Symbola_hint.ttf", font_size)
-    except OSError:
-        return ImageFont.load_default()
+        return _load_font(font_size, "regular")
 
 
 def draw_text(

@@ -5,10 +5,9 @@ from __future__ import annotations
 from importlib.metadata import version as pkg_version
 from math import cos, pi, sin
 from typing import TYPE_CHECKING
-from typing import cast
 
 from PIL import Image
-from PIL import ImageDraw, ImageFont
+from PIL import ImageDraw
 
 from inkpi.ui.codex_panel import CodexPanel
 from inkpi.ui.constants import (
@@ -24,7 +23,7 @@ from inkpi.ui.constants import (
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
 )
-from inkpi.ui.drawing import draw_line, draw_rect, draw_text, truncate_text
+from inkpi.ui.drawing import _load_font, draw_line, draw_rect, draw_text, truncate_text
 from inkpi.ui.github_panel import GitHubPanel
 
 if TYPE_CHECKING:
@@ -46,7 +45,8 @@ class DashboardRenderer:
         self._content_height = SCREEN_HEIGHT - 2 * CANVAS_PADDING
 
         self._separator_width = 1
-        self._status_y = 5
+        self._status_x_offset = MARGIN
+        self._status_y = 8
         self._status_height = 41
         self._status_github_separator_y = 52
         self._github_y = 59
@@ -78,12 +78,14 @@ class DashboardRenderer:
         canvas = Image.new("L", (SCREEN_WIDTH, SCREEN_HEIGHT), GRAY_WHITE)
 
         content_x = CANVAS_PADDING
+        status_x = content_x + self._status_x_offset
+        status_width = self._content_width - self._status_x_offset
 
         self._render_status_bar(
             canvas,
-            x=content_x,
+            x=status_x,
             y=self._status_y,
-            width=self._content_width,
+            width=status_width,
             date_time=snapshot.date_time,
             weather=snapshot.weather,
         )
@@ -213,9 +215,9 @@ class DashboardRenderer:
     ) -> None:
         draw = ImageDraw.Draw(image)
         value_text = f"{max(0, min(999, round(value))):>3}%"
-        value_font = self._load_font(FONT_SIZE_NORMAL)
+        value_font = _load_font(FONT_SIZE_NORMAL)
         value_width = draw.textbbox((0, 0), value_text, font=value_font)[2]
-        label_width = draw.textbbox((0, 0), label, font=self._load_font(FONT_SIZE_SMALL))[2]
+        label_width = draw.textbbox((0, 0), label, font=_load_font(FONT_SIZE_SMALL))[2]
         draw_text(image, (x, y + 2), label, fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
         draw_text(image, (x + label_width + 10, y), value_text, fill=GRAY_BLACK, font_size=FONT_SIZE_NORMAL, font_weight="semibold")
 
@@ -236,9 +238,9 @@ class DashboardRenderer:
 
         draw = ImageDraw.Draw(image)
         weather_text = self._format_weather(weather)
-        font = self._load_font(FONT_SIZE_NORMAL)
+        font = _load_font(FONT_SIZE_NORMAL)
         text_width = draw.textbbox((0, 0), weather_text, font=font)[2]
-        icon_size = 20 if weather.temperature_celsius is not None else 0
+        icon_size = 28 if weather.temperature_celsius is not None else 0
         gap = 8 if icon_size else 0
         total_width = text_width + gap + icon_size
         text_x = int(center_x - total_width / 2)
@@ -320,21 +322,6 @@ class DashboardRenderer:
         if network.connection_type == "ethernet":
             return "Ethernet"
         return "Offline" if not network.online else "Unknown"
-
-    @staticmethod
-    def _load_font(font_size: int) -> ImageFont.ImageFont:
-        candidates = [
-            "assets/fonts/MapleMono-CN-Regular.ttf",
-            "assets/fonts/MapleMono.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        ]
-        for path in candidates:
-            try:
-                return cast(ImageFont.ImageFont, ImageFont.truetype(path, font_size))
-            except OSError:
-                continue
-        return cast(ImageFont.ImageFont, ImageFont.load_default())
-
 
 def _fixed_ip(value: str) -> str:
     if not value:

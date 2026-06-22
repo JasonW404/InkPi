@@ -11,6 +11,8 @@ management portal.
   management facts, and dashboard controls.
 - `inkpi-display`: exclusively owns SPI/GPIO, panel lifecycle, frame history,
   and every full/partial/skip refresh decision.
+- `inkpi-admin`: serves the local read-only admin web portal shell and status
+  APIs for the future LAN/hotspot management workflow.
 - `inkpi-ctl`: queries and controls a running core service.
 - `inkpi-preview`: renders either built-in page without display hardware.
 
@@ -48,6 +50,7 @@ INKPI_DISPLAY_SOCKET=/tmp/inkpi-display.sock \
 INKPI_CORE_SOCKET=/tmp/inkpi-core.sock \
 uv run inkpi-core
 uv run inkpi-ctl --socket /tmp/inkpi-core.sock pages
+uv run inkpi-admin --core-socket /tmp/inkpi-core.sock
 ```
 
 ## Raspberry Pi Deployment
@@ -56,8 +59,11 @@ Install both system services from the repository:
 
 ```bash
 uv sync --extra rpi
+mkdir -p ~/.config/inkpi
+printf 'INKPI_ADMIN_TOKEN=%s\n' 'replace-with-a-local-token' > ~/.config/inkpi/admin.env
+chmod 600 ~/.config/inkpi/admin.env
 sudo bash scripts/systemd/install_inkpi_services.sh
-systemctl status inkpi-display.service inkpi-core.service
+systemctl status inkpi-display.service inkpi-core.service inkpi-admin.service
 ```
 
 The installer disables the legacy `eink-dashboard.service` so only
@@ -81,9 +87,13 @@ At least one page must remain enabled.
 
 ## Architecture
 
-See [docs/inkpi-architecture.md](docs/inkpi-architecture.md) for module
+See [docs/architecture.md](docs/architecture.md) for module
 ownership, contracts, refresh strategy, and future management integration.
+The local admin portal design lives in
+[docs/services/admin-portal-design.md](docs/services/admin-portal-design.md).
 
 Development workflow and extension guidance live in
-[docs/developer-guide.md](docs/developer-guide.md). Contributors and agents
+[docs/guides/developer-guide.md](docs/guides/developer-guide.md). Contributors and agents
 must follow [AGENTS.md](AGENTS.md) and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+
+Documentation is served via MkDocs: `uv run mkdocs serve`.

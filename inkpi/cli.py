@@ -6,6 +6,8 @@ import argparse
 import logging
 from pathlib import Path
 
+from inkpi.admin.auth import AdminAuthPolicy
+from inkpi.admin.server import DEFAULT_ADMIN_HOST, DEFAULT_ADMIN_PORT, run_admin_service
 from inkpi.config import load_config
 from inkpi.core import DEFAULT_CORE_SOCKET, run_core_service
 from inkpi.dashboard.controller import DashboardController
@@ -35,6 +37,29 @@ def core_main() -> None:
     _logging()
     try:
         run_core_service(args.socket, config_path=args.config, display_socket=args.display_socket)
+    except KeyboardInterrupt:
+        return
+
+
+def admin_main() -> None:
+    parser = argparse.ArgumentParser(description="InkPi local admin web portal")
+    parser.add_argument("--host", default=DEFAULT_ADMIN_HOST)
+    parser.add_argument("--port", default=DEFAULT_ADMIN_PORT, type=int)
+    parser.add_argument("--core-socket", default=str(DEFAULT_CORE_SOCKET))
+    parser.add_argument(
+        "--admin-token",
+        help="Token required for mutation routes. Defaults to INKPI_ADMIN_TOKEN.",
+    )
+    args = parser.parse_args()
+    _logging()
+    auth_policy = AdminAuthPolicy(args.admin_token) if args.admin_token else None
+    try:
+        run_admin_service(
+            host=args.host,
+            port=args.port,
+            core_socket=args.core_socket,
+            auth_policy=auth_policy,
+        )
     except KeyboardInterrupt:
         return
 
@@ -73,6 +98,11 @@ def preview_main() -> None:
         action="store_true",
         help="Render with static mock data instead of live collectors.",
     )
+    parser.add_argument(
+        "--eink-preview",
+        action="store_true",
+        help="Apply 4-gray e-ink dithering to preview output.",
+    )
     args = parser.parse_args()
     _logging()
     pages = [OverviewPage()]
@@ -80,6 +110,10 @@ def preview_main() -> None:
     page = next(item for item in pages if item.page_id == args.page)
     snapshot = make_mock_overview_snapshot() if args.mock_data else page.collect()
     image = page.render(snapshot)
+    if args.eink_preview:
+        from inkpi.ui.eink_preview import eink_dither
+
+        image = eink_dither(image)
     output = Path(args.output or f"{args.page}-preview.png")
     image.save(output)
     print(output.resolve())
