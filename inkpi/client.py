@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 from pathlib import Path
 
@@ -53,3 +54,14 @@ class InkPiClient:
 
     def get_core_status(self) -> dict:
         return request(self._socket_path, "get_core_status")
+
+    def get_page_preview(self, page_id: str) -> bytes | None:
+        """Return cached PNG preview bytes for *page_id*, or ``None``."""
+        try:
+            payload = request(self._socket_path, "get_page_preview", {"page_id": page_id})
+        except Exception:
+            return None
+        encoded = payload.get("png_base64")
+        if encoded is None:
+            return None
+        return base64.b64decode(encoded)

@@ -11,6 +11,7 @@ NetworkAccessState = Literal[
     "online_tunnel_hotspot",
     "online_wifi",
     "wifi_connecting",
+    "staged_wifi_pending",
     "wifi_failed_recovery_hotspot",
     "unknown",
 ]
@@ -37,6 +38,8 @@ class NetworkPolicyInput:
     configured_wifi_failed: bool = False
     failed_wifi_attempts: int = 0
     max_wifi_attempts: int = 3
+    staged_wifi_ssid: str | None = None
+    staged_wifi_confirmed: bool = False
     hidden_hotspot_when_upstream_online: bool = True
     internet_sharing_enabled: bool = True
 
@@ -69,6 +72,24 @@ def decide_network_access_policy(facts: NetworkPolicyInput) -> NetworkPolicyDeci
                 "submitted_wifi_credentials",
                 "keep_hotspot_until_wifi_success_is_confirmed",
             ),
+        )
+
+    if facts.staged_wifi_ssid and not facts.staged_wifi_confirmed and not facts.configured_wifi_failed:
+        return NetworkPolicyDecision(
+            state="staged_wifi_pending",
+            hotspot_mode="visible",
+            keep_current_session=True,
+            reasons=(
+                "staged_wifi_awaiting_confirmation",
+                "keep_hotspot_until_staged_success",
+            ),
+        )
+
+    if facts.staged_wifi_confirmed and facts.wifi_connected and facts.internet_online:
+        return NetworkPolicyDecision(
+            state="online_wifi",
+            hotspot_mode="off",
+            reasons=("staged_wifi_confirmed_and_online",),
         )
 
     if facts.wifi_connecting:

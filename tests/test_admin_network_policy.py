@@ -86,3 +86,48 @@ def test_usable_wifi_turns_recovery_hotspot_off() -> None:
     assert decision.state == "online_wifi"
     assert decision.hotspot_mode == "off"
     assert not decision.share_upstream
+
+
+def test_staged_wifi_ssid_enters_pending_state() -> None:
+    decision = decide_network_access_policy(
+        NetworkPolicyInput(
+            internet_online=False,
+            staged_wifi_ssid="NewNetwork",
+        )
+    )
+
+    assert decision.state == "staged_wifi_pending"
+    assert decision.hotspot_mode == "visible"
+    assert decision.keep_current_session
+    assert "staged_wifi_awaiting_confirmation" in decision.reasons
+
+
+def test_staged_wifi_confirmed_transitions_to_online_wifi() -> None:
+    decision = decide_network_access_policy(
+        NetworkPolicyInput(
+            internet_online=True,
+            wifi_connected=True,
+            staged_wifi_ssid="NewNetwork",
+            staged_wifi_confirmed=True,
+        )
+    )
+
+    assert decision.state == "online_wifi"
+    assert decision.hotspot_mode == "off"
+    assert "staged_wifi_confirmed_and_online" in decision.reasons
+
+
+def test_staged_wifi_failure_falls_back_to_recovery_hotspot() -> None:
+    decision = decide_network_access_policy(
+        NetworkPolicyInput(
+            internet_online=False,
+            staged_wifi_ssid="FailedNetwork",
+            configured_wifi_failed=True,
+            failed_wifi_attempts=3,
+            max_wifi_attempts=3,
+        )
+    )
+
+    assert decision.state == "wifi_failed_recovery_hotspot"
+    assert decision.hotspot_mode == "visible"
+    assert decision.wifi_action == "scan"

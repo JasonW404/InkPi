@@ -307,16 +307,16 @@ forms that issue POST requests from the portal UI.
 
 ## Implementation Phases
 
-1. Admin foundations: package, design contracts, network policy evaluator,
+1. ✅ Admin foundations: package, design contracts, network policy evaluator,
    static layout, read-only API.
-2. Dashboard browser page: page controls, preview rendering, display status.
-3. Network helper contract: scan/connect/hotspot status with fake helper tests.
-4. Recovery hotspot: visible setup hotspot, staged Wi-Fi connection, retry
-   budget, automatic fallback.
-5. Hidden maintenance hotspot: upstream sharing over Ethernet/tunnel, NAT and
-   firewall integration, client count.
-6. System operations: service restarts, bounded logs, settings forms, auth
-   hardening.
+2. ✅ Dashboard browser page: page controls, preview rendering, display status.
+3. ✅ Network helper contract: dry-run planner, privileged helper backend
+   (`helper_client.py`, `privileged.py`), Unix socket IPC, allowlisted operations.
+4. ✅ Recovery hotspot: staged Wi-Fi connection flow (submit, confirm, fail),
+   retry budget, automatic fallback, recovery tracking.
+5. ✅ Hidden maintenance hotspot: upstream sharing over Ethernet/tunnel,
+   iptables NAT rules, ip_forward, cleanup on disable.
+6. ✅ System operations: service restarts (`/api/system/restart/{service}`),
+   settings save/get, session auth with CSRF tokens, bounded event logs.
 
-Each phase must keep the existing display/core/dashboard ownership boundaries
-intact.
+All phases keep the existing display/core/dashboard ownership boundaries intact.

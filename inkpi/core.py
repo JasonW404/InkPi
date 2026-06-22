@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import base64
 import logging
 import os
 import threading
 import time
 from dataclasses import asdict
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +43,7 @@ class InkPiCore:
         self._worker: threading.Thread | None = None
         self._last_display_result: dict[str, Any] | None = None
         self._last_error: str | None = None
+        self._page_previews: dict[str, bytes] = {}
         self._logger = logging.getLogger(self.__class__.__name__)
 
     def start(self) -> None:
@@ -82,12 +85,25 @@ class InkPiCore:
                 "last_error": self._last_error,
                 "last_display_result": self._last_display_result,
             }
+        if action == "get_page_preview":
+            page_id = str(payload["page_id"])
+            png_bytes = self.get_page_preview(page_id)
+            if png_bytes is None:
+                return {"page_id": page_id, "png_base64": None}
+            return {"page_id": page_id, "png_base64": base64.b64encode(png_bytes).decode("ascii")}
         raise ValueError(f"unknown core action: {action}")
+
+    def get_page_preview(self, page_id: str) -> bytes | None:
+        """Return the last rendered PNG bytes for *page_id*, or ``None``."""
+        return self._page_previews.get(page_id)
 
     def _run(self) -> None:
         while self._running:
             try:
                 page_id, frame = self._controller.render_next()
+                buffer = BytesIO()
+                frame.save(buffer, format="PNG")
+                self._page_previews[page_id] = buffer.getvalue()
                 result = self._display.submit_frame(frame, FrameMetadata(page_id=page_id))
                 self._last_display_result = asdict(result)
                 self._last_error = None if result.accepted else result.reason

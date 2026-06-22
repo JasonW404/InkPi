@@ -22,7 +22,9 @@ def test_admin_server_serves_status_json_and_html() -> None:
         with urlopen(f"http://{host}:{port}/api/status", timeout=2) as response:  # noqa: S310
             payload = json.loads(response.read())
         with urlopen(f"http://{host}:{port}/network", timeout=2) as response:  # noqa: S310
-            html = response.read().decode("utf-8")
+            network_html = response.read().decode("utf-8")
+        with urlopen(f"http://{host}:{port}/dashboard", timeout=2) as response:  # noqa: S310
+            dashboard_html = response.read().decode("utf-8")
     finally:
         server.shutdown()
         server.server_close()
@@ -30,12 +32,12 @@ def test_admin_server_serves_status_json_and_html() -> None:
 
     assert payload["summary"]["access"] == "Ethernet"
     assert payload["network_policy"]["hotspot_mode"] == "hidden"
-    assert "InkPi Admin" in html
-    assert "online_ethernet_hotspot" in html
-    assert 'id="admin-token"' in html
-    assert 'data-endpoint="/api/network/wifi/connect"' in html
-    assert 'data-endpoint="/api/dashboard/pages/codex_usage/disable"' in html
-    assert 'src="/api/dashboard/preview/overview.png"' in html
+    assert "InkPi Admin" in network_html
+    assert "online_ethernet_hotspot" in network_html
+    assert 'id="admin-token"' in network_html
+    assert 'data-endpoint="/api/network/wifi/connect"' in network_html
+    assert 'data-endpoint="/api/dashboard/pages/codex_usage/disable"' in dashboard_html
+    assert 'src="/api/dashboard/preview/overview.png"' in dashboard_html
 
 
 def test_admin_server_serves_dashboard_preview_png() -> None:

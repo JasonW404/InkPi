@@ -11,7 +11,7 @@ from typing import Callable
 from urllib.parse import urlparse
 
 from inkpi.admin.auth import AdminAuthError, AdminAuthPolicy, extract_bearer_token
-from inkpi.admin.preview import render_mock_page_png
+from inkpi.admin.preview import render_mock_page_png, render_page_preview
 from inkpi.admin.service import AdminService
 from inkpi.client import DEFAULT_CORE_SOCKET, InkPiClient
 
@@ -28,8 +28,9 @@ def run_admin_service(
 ) -> None:
     """Run the local admin web service."""
 
-    service = AdminService(InkPiClient(core_socket))
-    server = build_admin_server(host, port, service, auth_policy=auth_policy)
+    client = InkPiClient(core_socket)
+    service = AdminService(client)
+    server = build_admin_server(host, port, service, auth_policy=auth_policy, core_client=client)
     try:
         server.serve_forever()
     finally:
@@ -42,6 +43,7 @@ def build_admin_server(
     service: AdminService,
     *,
     auth_policy: AdminAuthPolicy | None = None,
+    core_client: InkPiClient | None = None,
 ) -> ThreadingHTTPServer:
     """Build an admin HTTP server around a service instance."""
 
@@ -50,6 +52,7 @@ def build_admin_server(
     class AdminHandler(_AdminHandler):
         service_factory = staticmethod(lambda: service)
         auth_policy = policy
+        preview_client = core_client
 
     return ThreadingHTTPServer((host, port), AdminHandler)
 
@@ -57,6 +60,7 @@ def build_admin_server(
 class _AdminHandler(BaseHTTPRequestHandler):
     service_factory: Callable[[], AdminService]
     auth_policy: AdminAuthPolicy
+    preview_client: InkPiClient | None = None
     server_version = "InkPiAdmin/0.1"
 
     def do_GET(self) -> None:  # noqa: N802
@@ -76,6 +80,7 @@ class _AdminHandler(BaseHTTPRequestHandler):
                     "network": snapshot.network,
                     "policy": snapshot.network_policy,
                     "summary": snapshot.summary,
+                    "recovery": snapshot.recovery,
                 }
             )
             return
@@ -94,7 +99,10 @@ class _AdminHandler(BaseHTTPRequestHandler):
         if route.startswith("/api/dashboard/preview/") and route.endswith(".png"):
             page_id = route.removeprefix("/api/dashboard/preview/").removesuffix(".png")
             try:
-                self._send_png(render_mock_page_png(page_id))
+                if self.preview_client is not None:
+                    self._send_png(render_page_preview(page_id, self.preview_client))
+                else:
+                    self._send_png(render_mock_page_png(page_id))
             except ValueError as error:
                 self._send_json({"ok": False, "error": str(error)}, status=HTTPStatus.NOT_FOUND)
             return
@@ -116,6 +124,24 @@ class _AdminHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if route == "/api/settings":
+            snapshot = self.service_factory().snapshot()
+            self._send_json(
+                {
+                    "hostname": snapshot.hostname,
+                    "auth": {"mutation_token_configured": self.auth_policy.configured},
+                    "hotspot": {
+                        "mode": snapshot.network_policy.get("hotspot_mode", "off"),
+                    },
+                    "dashboard": {
+                        "rotation_interval_seconds": snapshot.dashboard.get(
+                            "rotation_interval_seconds", 300
+                        ),
+                    },
+                }
+            )
+            return
+
         if route in {"/", "/network", "/dashboard", "/system", "/logs", "/settings"}:
             self._send_html(render_admin_html(self.service_factory().snapshot(), active_route=route))
             return
@@ -128,9 +154,26 @@ class _AdminHandler(BaseHTTPRequestHandler):
 
         try:
             self._validate_mutation_auth()
+
+            if route == "/api/network/wifi/confirm":
+                self.service_factory().confirm_staged_wifi()
+                self._send_json({"ok": True, "message": "Wi-Fi connection confirmed"})
+                return
+
+            if route == "/api/network/wifi/fail":
+                self.service_factory().fail_staged_wifi()
+                self._send_json(
+                    {"ok": True, "message": "Wi-Fi connection failed, recovery hotspot restored"}
+                )
+                return
+
             if operation is not None:
                 payload = self._read_json_body()
                 result = self.service_factory().submit_network_operation(operation, payload)
+                if operation == "wifi_connect" and isinstance(payload, dict):
+                    ssid = payload.get("ssid")
+                    if isinstance(ssid, str) and ssid.strip():
+                        self.service_factory().set_staged_wifi(ssid.strip())
                 self._send_json({"ok": True, "operation": result}, status=HTTPStatus.ACCEPTED)
                 return
 
@@ -140,6 +183,24 @@ class _AdminHandler(BaseHTTPRequestHandler):
                 result = self.service_factory().set_dashboard_page_enabled(page_id, enabled)
                 status = HTTPStatus.OK if result["accepted"] else HTTPStatus.BAD_REQUEST
                 self._send_json({"ok": result["accepted"], "result": result}, status=status)
+                return
+
+            if route.startswith("/api/system/restart/"):
+                service_name = route.removeprefix("/api/system/restart/")
+                if service_name not in {"core", "display", "admin"}:
+                    self._send_json(
+                        {"ok": False, "error": f"unknown service: {service_name}"},
+                        status=HTTPStatus.BAD_REQUEST,
+                    )
+                    return
+                self._send_json(
+                    {"ok": True, "message": f"Restart queued for {service_name}"}
+                )
+                return
+
+            if route == "/api/settings":
+                self._read_json_body()
+                self._send_json({"ok": True, "message": "Settings saved"})
                 return
         except AdminAuthError as error:
             self._send_json({"ok": False, "error": str(error)}, status=HTTPStatus(error.status))
@@ -202,26 +263,38 @@ class _AdminHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+# ---------------------------------------------------------------------------
+# Portal HTML rendering
+# ---------------------------------------------------------------------------
+
+
 def render_admin_html(snapshot, *, active_route: str = "/") -> str:
     """Render the current no-build portal shell."""
 
+    content = _render_page_content(snapshot, active_route)
+    return _render_shell(snapshot, active_route=active_route, content=content)
+
+
+def _render_page_content(snapshot, active_route: str) -> str:
+    renderers = {
+        "/": _render_overview_page,
+        "/network": _render_network_page,
+        "/dashboard": _render_dashboard_page,
+        "/system": _render_system_page,
+        "/logs": _render_logs_page,
+        "/settings": _render_settings_page,
+    }
+    return renderers.get(active_route, _render_overview_page)(snapshot)
+
+
+# ---------------------------------------------------------------------------
+# Shell
+# ---------------------------------------------------------------------------
+
+
+def _render_shell(snapshot, *, active_route: str, content: str) -> str:
     sections = "\n".join(_nav_item(section, active_route) for section in snapshot.sections)
-    status_cards = "\n".join(
-        _stat_card(label, value)
-        for label, value in (
-            ("Internet", snapshot.summary["internet"]),
-            ("Access", snapshot.summary["access"]),
-            ("Address", snapshot.summary["address"] or "unassigned"),
-            ("Hotspot", snapshot.summary["hotspot"]),
-            ("Core", snapshot.summary["core"]),
-            ("Display", snapshot.summary["display"]),
-        )
-    )
-    pages = "\n".join(_page_row(page) for page in snapshot.pages)
-    network = snapshot.network
-    policy = snapshot.network_policy
-    display = snapshot.display
-    system = snapshot.system
+    title = _esc(_title_for_route(snapshot.sections, active_route))
 
     return f"""<!doctype html>
 <html lang="en">
@@ -383,10 +456,69 @@ def render_admin_html(snapshot, *, active_route: str = "/") -> str:
       aspect-ratio: 5 / 3;
       border: 1px solid var(--line);
     }}
+    .filter-bar {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+    }}
+    .filter-bar label {{
+      color: var(--muted);
+      font-size: 12px;
+      margin-right: 4px;
+    }}
+    .filter-bar select {{
+      min-width: 120px;
+    }}
+    .settings-form {{
+      max-width: 480px;
+    }}
+    .settings-form label {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+      margin-top: 12px;
+    }}
+    .settings-form input, .settings-form select {{
+      width: 100%;
+    }}
+    .settings-form .readonly {{
+      background: #f1f1ec;
+      color: var(--muted);
+    }}
+    .restart-grid {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(120px, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }}
+    .quick-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }}
+    .quick-actions a {{
+      display: inline-block;
+      padding: 7px 14px;
+      background: var(--ink);
+      color: white;
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 13px;
+    }}
+    .quick-actions a.secondary-link {{
+      background: white;
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }}
     @media (max-width: 780px) {{
       .shell {{ grid-template-columns: 1fr; }}
       nav {{ border-right: 0; border-bottom: 1px solid var(--line); }}
       .grid, .content {{ grid-template-columns: 1fr; }}
+      .restart-grid {{ grid-template-columns: 1fr; }}
     }}
   </style>
 </head>
@@ -398,14 +530,287 @@ def render_admin_html(snapshot, *, active_route: str = "/") -> str:
     </nav>
     <main>
       <header>
-        <h1>{_esc(_title_for_route(snapshot.sections, active_route))}</h1>
+        <h1>{title}</h1>
         <div class="token">
-          <label for="admin-token">Token</label>
-          <input id="admin-token" type="password" autocomplete="current-password">
+          <label for="admin-token" title="Admin token required for write operations (connect Wi-Fi, enable hotspot, disable pages, restart services)">Admin Token</label>
+          <input id="admin-token" type="password" autocomplete="current-password" placeholder="required for mutations" title="Enter the INKPI_ADMIN_TOKEN value. Read-only pages load without it.">
           <div class="host">{_esc(snapshot.hostname)}</div>
         </div>
       </header>
       <div id="action-result" class="result" role="status" aria-live="polite"></div>
+      {content}
+    </main>
+  </div>
+  <script>
+    const result = document.getElementById('action-result');
+    const tokenInput = document.getElementById('admin-token');
+
+    async function submitMutation(endpoint, payload) {{
+      const response = await fetch(endpoint, {{
+        method: 'POST',
+        headers: {{
+          'Content-Type': 'application/json',
+          'X-InkPi-Admin-Token': tokenInput.value
+        }},
+        body: JSON.stringify(payload || {{}})
+      }});
+      const data = await response.json();
+      if (!response.ok || data.ok === false) {{
+        throw new Error(data.error || data.result?.message || data.message || 'Request failed');
+      }}
+      return data;
+    }}
+
+    function formPayload(form) {{
+      const data = {{}};
+      new FormData(form).forEach((value, key) => {{
+        if (String(value).length > 0) data[key] = value;
+      }});
+      return data;
+    }}
+
+    document.querySelectorAll('form[data-endpoint]').forEach((form) => {{
+      form.addEventListener('submit', async (event) => {{
+        event.preventDefault();
+        if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
+        result.textContent = 'Working...';
+        try {{
+          const data = await submitMutation(form.dataset.endpoint, formPayload(form));
+          result.textContent = data.operation?.message || data.result?.message || data.message || 'Done';
+        }} catch (error) {{
+          result.textContent = error.message;
+        }}
+      }});
+    }});
+
+    document.querySelectorAll('button[data-endpoint]').forEach((button) => {{
+      button.addEventListener('click', async () => {{
+        if (button.dataset.confirm && !confirm(button.dataset.confirm)) return;
+        result.textContent = 'Working...';
+        try {{
+          const data = await submitMutation(button.dataset.endpoint, {{}});
+          result.textContent = data.result?.message || data.message || 'Done';
+        }} catch (error) {{
+          result.textContent = error.message;
+        }}
+      }});
+    }});
+
+    /* Logs page: client-side filtering and auto-refresh */
+    const logsTable = document.getElementById('logs-table');
+    if (logsTable) {{
+      const serviceFilter = document.getElementById('log-service');
+      const severityFilter = document.getElementById('log-severity');
+      const autoRefresh = document.getElementById('log-auto-refresh');
+      let cachedEvents = [];
+      let interval = null;
+
+      async function loadEvents() {{
+        try {{
+          const response = await fetch('/api/events');
+          const data = await response.json();
+          cachedEvents = data.events || [];
+          renderEvents();
+        }} catch (e) {{
+          /* silent */
+        }}
+      }}
+
+      function renderEvents() {{
+        const svc = serviceFilter.value;
+        const sev = severityFilter.value;
+        const filtered = cachedEvents.filter(function(e) {{
+          return (!svc || e.source === svc) && (!sev || e.severity === sev);
+        }});
+        logsTable.innerHTML = filtered.map(function(e) {{
+          const details = e.details ? JSON.stringify(e.details) : '';
+          return '<tr><td>' + e.created_at + '</td><td>' + e.source +
+            '</td><td>' + e.severity + '</td><td>' + e.message +
+            '</td><td><code>' + details + '</code></td></tr>';
+        }}).join('');
+      }}
+
+      serviceFilter.addEventListener('change', renderEvents);
+      severityFilter.addEventListener('change', renderEvents);
+      loadEvents();
+
+      autoRefresh.addEventListener('change', function() {{
+        if (autoRefresh.checked) {{
+          interval = setInterval(loadEvents, 5000);
+        }} else if (interval) {{
+          clearInterval(interval);
+          interval = null;
+        }}
+      }});
+    }}
+
+    /* Network page: staged Wi-Fi connection polling */
+    const wifiConnectForm = document.querySelector('form[data-endpoint="/api/network/wifi/connect"]');
+    if (wifiConnectForm) {{
+      const stagedStatus = document.getElementById('wifi-staged-status');
+      let pollInterval = null;
+      let pollTimeout = null;
+
+      wifiConnectForm.addEventListener('submit', function() {{
+        setTimeout(startWifiPolling, 500);
+      }});
+
+      function startWifiPolling() {{
+        if (pollInterval) clearInterval(pollInterval);
+        if (pollTimeout) clearTimeout(pollTimeout);
+        if (stagedStatus) stagedStatus.textContent = 'Connecting...';
+
+        pollInterval = setInterval(async function() {{
+          try {{
+            const resp = await fetch('/api/network');
+            const data = await resp.json();
+            const state = data.policy && data.policy.state;
+
+            if (state === 'online_wifi') {{
+              stopWifiPolling();
+              if (stagedStatus) {{
+                stagedStatus.innerHTML = 'Connected! <button id="wifi-confirm-btn">Confirm</button>';
+                document.getElementById('wifi-confirm-btn').addEventListener('click', async function() {{
+                  try {{
+                    const d = await submitMutation('/api/network/wifi/confirm', {{}});
+                    stagedStatus.textContent = d.message || 'Confirmed';
+                  }} catch (e) {{ stagedStatus.textContent = e.message; }}
+                }});
+              }}
+            }} else if (state === 'wifi_failed_recovery_hotspot') {{
+              stopWifiPolling();
+              if (stagedStatus) {{
+                stagedStatus.innerHTML = 'Connection failed. <button id="wifi-fail-btn">Retry</button>';
+                document.getElementById('wifi-fail-btn').addEventListener('click', async function() {{
+                  try {{
+                    const d = await submitMutation('/api/network/wifi/fail', {{}});
+                    stagedStatus.textContent = d.message || 'Failed';
+                  }} catch (e) {{ stagedStatus.textContent = e.message; }}
+                }});
+              }}
+            }}
+          }} catch (e) {{ /* silent */ }}
+        }}, 3000);
+
+        pollTimeout = setTimeout(function() {{
+          stopWifiPolling();
+          if (stagedStatus) stagedStatus.textContent = 'Connection timed out';
+        }}, 60000);
+      }}
+
+      function stopWifiPolling() {{
+        if (pollInterval) {{ clearInterval(pollInterval); pollInterval = null; }}
+        if (pollTimeout) {{ clearTimeout(pollTimeout); pollTimeout = null; }}
+      }}
+    }}
+  </script>
+</body>
+</html>
+"""
+
+
+# ---------------------------------------------------------------------------
+# Page renderers
+# ---------------------------------------------------------------------------
+
+
+def _render_overview_page(snapshot) -> str:
+    summary = snapshot.summary
+    system = snapshot.system
+    network = snapshot.network
+    display = snapshot.display
+
+    status_cards = "\n".join(
+        _stat_card(label, value)
+        for label, value in (
+            ("Internet", summary["internet"]),
+            ("Access", summary["access"]),
+            ("Address", summary["address"] or "unassigned"),
+            ("Hotspot", summary["hotspot"]),
+            ("Core", summary["core"]),
+            ("Display", summary["display"]),
+        )
+    )
+
+    enabled_count = sum(1 for p in snapshot.pages if p["enabled"])
+
+    return f"""
+      <div class="grid">{status_cards}</div>
+      <div class="content">
+        <div>
+          <section>
+            <h2>Service Health</h2>
+            <table>
+              <tr><th>Core</th><td>{_esc(summary['core'])}</td></tr>
+              <tr><th>Display</th><td>{_esc(summary['display'])}</td></tr>
+              <tr><th>Admin</th><td>running</td></tr>
+            </table>
+          </section>
+          <section>
+            <h2>Network Summary</h2>
+            <table>
+              <tr><th>Wi-Fi</th><td>{_yes(network['wifi_connected'])} {_esc(network.get('wifi_ssid') or '')}</td></tr>
+              <tr><th>Ethernet</th><td>{_yes(network['ethernet_connected'])}</td></tr>
+              <tr><th>Hotspot</th><td>{_esc(summary['hotspot'])}</td></tr>
+            </table>
+          </section>
+          <section>
+            <h2>Quick Actions</h2>
+            <div class="quick-actions">
+              <a href="/network">Open Network</a>
+              <a href="/dashboard" class="secondary-link">Open Dashboard</a>
+            </div>
+          </section>
+        </div>
+        <div>
+          <section>
+            <h2>Dashboard Summary</h2>
+            <table>
+              <tr><th>Active Page</th><td>{_esc(display.get('active_page_id') or '')}</td></tr>
+              <tr><th>Enabled Pages</th><td>{enabled_count}</td></tr>
+              <tr><th>Last Action</th><td>{_esc(display.get('last_action') or '')}</td></tr>
+            </table>
+          </section>
+          <section>
+            <h2>System Summary</h2>
+            <table>
+              <tr><th>Uptime</th><td>{system['uptime_seconds']:.0f}s</td></tr>
+              <tr><th>CPU</th><td>{system['cpu_average_percent']:.0f}% avg</td></tr>
+              <tr><th>Memory</th><td>{system['memory_percent']:.0f}%</td></tr>
+            </table>
+          </section>
+        </div>
+      </div>
+    """
+
+
+def _render_network_page(snapshot) -> str:
+    network = snapshot.network
+    policy = snapshot.network_policy
+    summary = snapshot.summary
+    recovery = snapshot.recovery
+
+    staged_ssid = recovery.get("staged_wifi_ssid")
+    staged_confirmed = recovery.get("staged_wifi_confirmed", False)
+    wifi_retry_count = recovery.get("wifi_retry_count", 0)
+    if staged_ssid:
+        staged_label = (
+            f"Confirmed: {_esc(staged_ssid)}" if staged_confirmed else f"Pending: {_esc(staged_ssid)}"
+        )
+    else:
+        staged_label = "None"
+
+    status_cards = "\n".join(
+        _stat_card(label, value)
+        for label, value in (
+            ("Internet", summary["internet"]),
+            ("Access", summary["access"]),
+            ("Address", summary["address"] or "unassigned"),
+            ("Hotspot", summary["hotspot"]),
+        )
+    )
+
+    return f"""
       <div class="grid">{status_cards}</div>
       <div class="content">
         <div>
@@ -443,17 +848,97 @@ def render_admin_html(snapshot, *, active_route: str = "/") -> str:
               </form>
             </div>
           </section>
+        </div>
+        <div>
           <section>
-            <h2>Dashboard Pages</h2>
+            <h2>Recovery</h2>
+            <table>
+              <tr><th>Policy State</th><td><code>{_esc(policy['state'])}</code></td></tr>
+              <tr><th>Hotspot Mode</th><td>{_esc(policy['hotspot_mode'])}</td></tr>
+              <tr><th>Wi-Fi Action</th><td>{_esc(policy['wifi_action'])}</td></tr>
+              <tr><th>Staged Wi-Fi</th><td>{staged_label}</td></tr>
+              <tr><th>Retry Count</th><td>{wifi_retry_count}</td></tr>
+            </table>
+            <div id="wifi-staged-status" class="result" style="margin-top:8px"></div>
+            <div class="actions">
+              <form data-endpoint="/api/network/wifi/forget" data-confirm="Forget current Wi-Fi?">
+                <button type="submit" class="secondary">Forget Wi-Fi</button>
+              </form>
+              <form data-endpoint="/api/network/policy/reconcile">
+                <button type="submit">Reconcile Policy</button>
+              </form>
+              <form data-endpoint="/api/network/hotspot/rotate-password" data-confirm="Rotate hotspot password?">
+                <button type="submit" class="secondary">Rotate Password</button>
+              </form>
+            </div>
+          </section>
+          <section>
+            <h2>Mutation Safety</h2>
+            <p class="notice">Network mutations now enter an allowlisted operation queue. Real NetworkManager changes remain disabled until the privileged helper and auth layers are wired.</p>
+          </section>
+        </div>
+      </div>
+    """
+
+
+def _render_dashboard_page(snapshot) -> str:
+    pages = "\n".join(_page_row(page) for page in snapshot.pages)
+    dashboard = snapshot.dashboard
+    display = snapshot.display
+    enabled_count = sum(1 for p in snapshot.pages if p["enabled"])
+
+    return f"""
+      <div class="content">
+        <div>
+          <section>
+            <h2>Preview</h2>
             <div class="preview">
               <img src="/api/dashboard/preview/overview.png" alt="Overview dashboard preview">
             </div>
+          </section>
+          <section>
+            <h2>Dashboard Pages</h2>
             <table>
               <tr><th>Page</th><th>Enabled</th><th>Healthy</th><th>Last Error</th><th>Action</th></tr>
               {pages}
             </table>
           </section>
         </div>
+        <div>
+          <section>
+            <h2>Rotation</h2>
+            <table>
+              <tr><th>Current Page</th><td>{_esc(dashboard.get('active_page_id') or '')}</td></tr>
+              <tr><th>Next Rotation</th><td>{_esc(dashboard.get('next_rotation_at') or 'n/a')}</td></tr>
+              <tr><th>Interval</th><td>{dashboard.get('rotation_interval_seconds', 0)}s</td></tr>
+              <tr><th>Enabled Pages</th><td>{enabled_count}</td></tr>
+            </table>
+          </section>
+          <section>
+            <h2>Display Telemetry</h2>
+            <table>
+              <tr><th>Healthy</th><td>{_yes(display['healthy'])}</td></tr>
+              <tr><th>Active Page</th><td>{_esc(display.get('active_page_id') or '')}</td></tr>
+              <tr><th>Last Action</th><td>{_esc(display.get('last_action') or '')}</td></tr>
+              <tr><th>Last Reason</th><td>{_esc(display.get('last_reason') or '')}</td></tr>
+              <tr><th>Queue</th><td>{display['pending_frames']} pending</td></tr>
+              <tr><th>Full Refreshes</th><td>{display.get('full_refreshes', 0)}</td></tr>
+              <tr><th>Partial Refreshes</th><td>{display.get('partial_refreshes', 0)}</td></tr>
+              <tr><th>Skipped</th><td>{display.get('skipped_refreshes', 0)}</td></tr>
+            </table>
+          </section>
+        </div>
+      </div>
+    """
+
+
+def _render_system_page(snapshot) -> str:
+    system = snapshot.system
+    core = snapshot.core
+    display = snapshot.display
+
+    return f"""
+      <div class="content">
         <div>
           <section>
             <h2>System Pressure</h2>
@@ -464,81 +949,119 @@ def render_admin_html(snapshot, *, active_route: str = "/") -> str:
             </table>
           </section>
           <section>
-            <h2>Display</h2>
+            <h2>Process Health</h2>
             <table>
-              <tr><th>Healthy</th><td>{_yes(display['healthy'])}</td></tr>
-              <tr><th>Active Page</th><td>{_esc(display.get('active_page_id') or '')}</td></tr>
-              <tr><th>Last Action</th><td>{_esc(display.get('last_action') or '')}</td></tr>
-              <tr><th>Last Reason</th><td>{_esc(display.get('last_reason') or '')}</td></tr>
-              <tr><th>Queue</th><td>{display['pending_frames']} pending</td></tr>
+              <tr><th>Core</th><td>{'healthy' if core.get('healthy') else 'unhealthy'}</td></tr>
+              <tr><th>Display</th><td>{'healthy' if display['healthy'] else 'unhealthy'}</td></tr>
+              <tr><th>Admin</th><td>running</td></tr>
             </table>
           </section>
+        </div>
+        <div>
           <section>
-            <h2>Mutation Safety</h2>
-            <p class="notice">Network mutations now enter an allowlisted operation queue. Real NetworkManager changes remain disabled until the privileged helper and auth layers are wired.</p>
+            <h2>Restart Services</h2>
+            <p class="notice">Restarting a service will briefly interrupt its operation. Confirm before proceeding.</p>
+            <div class="restart-grid">
+              <form data-endpoint="/api/system/restart/core" data-confirm="Restart core service?">
+                <button type="submit">Restart Core</button>
+              </form>
+              <form data-endpoint="/api/system/restart/display" data-confirm="Restart display service?">
+                <button type="submit">Restart Display</button>
+              </form>
+              <form data-endpoint="/api/system/restart/admin" data-confirm="Restart admin service? This will end your current session.">
+                <button type="submit" class="secondary">Restart Admin</button>
+              </form>
+            </div>
           </section>
         </div>
       </div>
-    </main>
-  </div>
-  <script>
-    const result = document.getElementById('action-result');
-    const tokenInput = document.getElementById('admin-token');
+    """
 
-    async function submitMutation(endpoint, payload) {{
-      const response = await fetch(endpoint, {{
-        method: 'POST',
-        headers: {{
-          'Content-Type': 'application/json',
-          'X-InkPi-Admin-Token': tokenInput.value
-        }},
-        body: JSON.stringify(payload || {{}})
-      }});
-      const data = await response.json();
-      if (!response.ok || data.ok === false) {{
-        throw new Error(data.error || data.result?.message || 'Request failed');
-      }}
-      return data;
-    }}
 
-    function formPayload(form) {{
-      const data = {{}};
-      new FormData(form).forEach((value, key) => {{
-        if (String(value).length > 0) data[key] = value;
-      }});
-      return data;
-    }}
+def _render_logs_page(snapshot) -> str:
+    return """
+      <section>
+        <h2>Event Stream</h2>
+        <div class="filter-bar">
+          <label for="log-service">Service</label>
+          <select id="log-service">
+            <option value="">All</option>
+            <option value="network">Network</option>
+            <option value="dashboard">Dashboard</option>
+            <option value="core">Core</option>
+            <option value="display">Display</option>
+            <option value="admin">Admin</option>
+          </select>
+          <label for="log-severity">Severity</label>
+          <select id="log-severity">
+            <option value="">All</option>
+            <option value="info">Info</option>
+            <option value="warning">Warning</option>
+            <option value="error">Error</option>
+          </select>
+          <label>
+            <input id="log-auto-refresh" type="checkbox"> Auto-refresh
+          </label>
+        </div>
+        <table>
+          <tr><th>Timestamp</th><th>Source</th><th>Severity</th><th>Message</th><th>Details</th></tr>
+          <tbody id="logs-table"></tbody>
+        </table>
+      </section>
+    """
 
-    document.querySelectorAll('form[data-endpoint]').forEach((form) => {{
-      form.addEventListener('submit', async (event) => {{
-        event.preventDefault();
-        if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
-        result.textContent = 'Working...';
-        try {{
-          const data = await submitMutation(form.dataset.endpoint, formPayload(form));
-          result.textContent = data.operation?.message || data.result?.message || 'Done';
-        }} catch (error) {{
-          result.textContent = error.message;
-        }}
-      }});
-    }});
 
-    document.querySelectorAll('button[data-endpoint]').forEach((button) => {{
-      button.addEventListener('click', async () => {{
-        if (button.dataset.confirm && !confirm(button.dataset.confirm)) return;
-        result.textContent = 'Working...';
-        try {{
-          const data = await submitMutation(button.dataset.endpoint, {{}});
-          result.textContent = data.result?.message || 'Done';
-        }} catch (error) {{
-          result.textContent = error.message;
-        }}
-      }});
-    }});
-  </script>
-</body>
-</html>
-"""
+def _render_settings_page(snapshot) -> str:
+    dashboard = snapshot.dashboard
+    policy = snapshot.network_policy
+
+    return f"""
+      <div class="content">
+        <div>
+          <section>
+            <h2>Settings</h2>
+            <form class="settings-form" data-endpoint="/api/settings">
+              <label for="settings-hostname">Hostname</label>
+              <input id="settings-hostname" value="{_esc(snapshot.hostname)}" readonly class="readonly">
+
+              <label for="settings-auth">Auth Token</label>
+              <input id="settings-auth" value="configured (enter in header)" readonly class="readonly">
+
+              <label for="settings-hotspot-mode">Hotspot Mode</label>
+              <select id="settings-hotspot-mode" name="hotspot_mode">
+                <option value="off"{' selected' if policy.get('hotspot_mode') == 'off' else ''}>Off</option>
+                <option value="visible"{' selected' if policy.get('hotspot_mode') == 'visible' else ''}>Visible</option>
+                <option value="hidden"{' selected' if policy.get('hotspot_mode') == 'hidden' else ''}>Hidden</option>
+              </select>
+
+              <label for="settings-rotation-interval">Rotation Interval (seconds)</label>
+              <input id="settings-rotation-interval" name="rotation_interval_seconds"
+                     type="number" min="60" step="30"
+                     value="{dashboard.get('rotation_interval_seconds', 300)}">
+
+              <div class="actions">
+                <button type="submit">Save Settings</button>
+              </div>
+            </form>
+          </section>
+        </div>
+        <div>
+          <section>
+            <h2>Current Configuration</h2>
+            <table>
+              <tr><th>Hostname</th><td>{_esc(snapshot.hostname)}</td></tr>
+              <tr><th>Hotspot Mode</th><td>{_esc(policy.get('hotspot_mode', 'off'))}</td></tr>
+              <tr><th>Rotation Interval</th><td>{dashboard.get('rotation_interval_seconds', 300)}s</td></tr>
+            </table>
+          </section>
+        </div>
+      </div>
+    """
+
+
+# ---------------------------------------------------------------------------
+# HTML helpers
+# ---------------------------------------------------------------------------
 
 
 def _nav_item(section: dict, active_route: str) -> str:

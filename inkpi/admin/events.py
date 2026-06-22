@@ -10,7 +10,7 @@ from uuid import uuid4
 
 EventSeverity = Literal["info", "warning", "error"]
 
-_SENSITIVE_KEYS = {"password", "passphrase", "token", "secret", "authorization", "cookie"}
+_SENSITIVE_KEYS = {"password", "passphrase", "token", "secret", "authorization", "cookie", "session_id", "csrf"}
 
 
 @dataclass(frozen=True)

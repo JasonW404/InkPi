@@ -32,7 +32,7 @@ class NetworkOperationRequest:
     share_upstream: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class NetworkOperation:
     """Trackable helper operation returned to portal callers."""
 
@@ -45,6 +45,11 @@ class NetworkOperation:
 
     def to_payload(self) -> dict:
         return asdict(self)
+
+    def update_status(self, status: OperationStatus, message: str = "") -> None:
+        self.status = status
+        if message:
+            self.message = message
 
 
 class NetworkHelper(Protocol):
@@ -84,6 +89,17 @@ class InMemoryNetworkHelper:
 
     def list_operations(self) -> list[NetworkOperation]:
         return list(self._operations.values())
+
+    def complete_operation(
+        self,
+        operation_id: str,
+        status: OperationStatus,
+        message: str = "",
+    ) -> NetworkOperation | None:
+        operation = self._operations.get(operation_id)
+        if operation is not None:
+            operation.update_status(status, message)
+        return operation
 
 
 def build_operation_request(

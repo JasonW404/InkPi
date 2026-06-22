@@ -108,6 +108,14 @@ class NetworkStatus:
     connection_type: str = "unknown"
 
 
+@dataclass(frozen=True)
+class PagePreview:
+    """Cached preview frame returned by core for a rendered page."""
+
+    page_id: str
+    png_base64: str | None
+
+
 class ManagementDataProvider(Protocol):
     """Facts dashboard pages may request from management."""
 

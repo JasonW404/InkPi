@@ -93,14 +93,26 @@ def plan_network_operation(request: NetworkOperationRequest) -> NetworkCommandPl
             steps.append(CommandStep(("nmcli", "connection", "modify", "InkPi Hotspot", "802-11-wireless.hidden", "yes")))
         if request.share_upstream:
             steps.append(CommandStep(("nmcli", "connection", "modify", "InkPi Hotspot", "ipv4.method", "shared")))
+            upstream = _upstream_interface(request)
+            steps.extend(_nat_enable_steps(upstream))
+            steps.append(CommandStep(("sysctl", "-w", "net.ipv4.ip_forward=1"), note="enable IP forwarding for NAT"))
         return NetworkCommandPlan(action=request.action, steps=tuple(steps))
 
     if request.action == "hotspot_disable":
+        upstream = _upstream_interface(request)
+        steps = [
+            CommandStep(("nmcli", "connection", "down", "InkPi Hotspot")),
+        ]
+        steps.extend(_nat_disable_steps(upstream))
+        steps.append(
+            CommandStep(
+                ("sysctl", "-w", "net.ipv4.ip_forward=0"),
+                note="optional: disable IP forwarding (may already be off)",
+            )
+        )
         return NetworkCommandPlan(
             action=request.action,
-            steps=(
-                CommandStep(("nmcli", "connection", "down", "InkPi Hotspot")),
-            ),
+            steps=tuple(steps),
             warnings=("helper should ignore missing inactive hotspot connections",),
         )
 
@@ -129,6 +141,57 @@ def plan_network_operation(request: NetworkOperationRequest) -> NetworkCommandPl
         )
 
     raise ValueError(f"unsupported network operation: {request.action}")
+
+
+def _upstream_interface(request: NetworkOperationRequest) -> str:
+    """Determine the upstream interface for NAT rules. Defaults to eth0 until routing-table detection is added."""
+    return "eth0"
+
+
+def _nat_enable_steps(upstream: str) -> list[CommandStep]:
+    """Return iptables NAT rules for sharing upstream internet through the hotspot."""
+    return [
+        CommandStep(
+            ("iptables", "-t", "nat", "-A", "POSTROUTING", "-o", upstream, "-j", "MASQUERADE"),
+            note="NAT masquerade on upstream interface",
+        ),
+        CommandStep(
+            ("iptables", "-A", "FORWARD", "-i", "wlan0", "-o", upstream, "-j", "ACCEPT"),
+            note="allow forwarding from hotspot to upstream",
+        ),
+        CommandStep(
+            (
+                "iptables", "-A", "FORWARD",
+                "-i", upstream, "-o", "wlan0",
+                "-m", "state", "--state", "RELATED,ESTABLISHED",
+                "-j", "ACCEPT",
+            ),
+            note="allow return traffic from upstream to hotspot",
+        ),
+    ]
+
+
+def _nat_disable_steps(upstream: str) -> list[CommandStep]:
+    """Return iptables NAT cleanup rules (marked optional since rules may not exist)."""
+    return [
+        CommandStep(
+            ("iptables", "-t", "nat", "-D", "POSTROUTING", "-o", upstream, "-j", "MASQUERADE"),
+            note="optional: remove NAT masquerade (may not exist)",
+        ),
+        CommandStep(
+            ("iptables", "-D", "FORWARD", "-i", "wlan0", "-o", upstream, "-j", "ACCEPT"),
+            note="optional: remove forward rule (may not exist)",
+        ),
+        CommandStep(
+            (
+                "iptables", "-D", "FORWARD",
+                "-i", upstream, "-o", "wlan0",
+                "-m", "state", "--state", "RELATED,ESTABLISHED",
+                "-j", "ACCEPT",
+            ),
+            note="optional: remove return traffic rule (may not exist)",
+        ),
+    ]
 
 
 def _wifi_connect_argv(request: NetworkOperationRequest) -> tuple[str, ...]:

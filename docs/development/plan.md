@@ -29,7 +29,7 @@ InkPi 是运行在 Raspberry Pi 4B 上的模块化 e-ink 仪表盘设备，
 | Package Manager | uv + pyproject.toml |
 | Deploy Target | `meta_pi:/home/meta/Documents/InkPi` |
 | Current Version | 0.2.0 |
-| Test Coverage | 101 tests across 18 test files |
+| Test Coverage | 182 tests across 27 test files |
 
 ---
 
@@ -43,6 +43,7 @@ InkPi 是运行在 Raspberry Pi 4B 上的模块化 e-ink 仪表盘设备，
 | Phase 3 | Runtime Robustness | ✅ Done | 重试超时、故障隔离、架构边界测试 |
 | Phase 4 | Cross-Platform CI | ✅ Done | FileBackend、e-ink 预览、GitHub Actions |
 | Phase 5 | Font Bundling | ✅ Done | 字体内置、统一加载、无系统字体策略 |
+| Phase 6 | Admin Portal | ✅ Done | Privileged helper, portal UI, session auth, staged Wi-Fi, NAT, live preview |
 
 ---
 
@@ -189,6 +190,31 @@ guard against regressions with architecture tests. See
 
 ---
 
+## Phase 6: Admin Portal Implementation ✅
+
+> Goal: complete the admin portal with privileged helper, portal UI,
+> session auth, staged Wi-Fi, hidden hotspot/NAT, and live preview.
+> 目标: 完成管理门户全部功能，包括特权 helper、门户 UI、session 认证、
+> 分阶段 Wi-Fi、隐藏热点/NAT 和实时预览。
+
+**Deliverables:**
+
+| Sub-task | File | Tests |
+|----------|------|-------|
+| Privileged helper backend | `inkpi/admin/helper_client.py`, `inkpi/admin/privileged.py` | 21 |
+| Live preview contract | `inkpi/core.py`, `inkpi/admin/preview.py` | 7 |
+| Portal UI split (6 pages) | `inkpi/admin/server.py` | - |
+| Service layer wiring | `inkpi/admin/service.py`, `inkpi/admin/operations.py` | 17 |
+| Staged Wi-Fi flow | `inkpi/admin/server.py`, `inkpi/admin/service.py` | 8 |
+| Hidden hotspot + NAT | `inkpi/admin/network_helper.py`, `inkpi/admin/privileged.py` | 14 |
+| Session auth + CSRF | `inkpi/admin/auth.py`, `inkpi/admin/events.py` | 14 |
+
+!!! success "Acceptance"
+    182 tests 全部通过，ruff clean，compileall clean。
+    管理门户 11 个模块全部实现，6 个页面可用。
+
+---
+
 ## Future Roadmap
 
 ### Near Term
@@ -199,13 +225,14 @@ guard against regressions with architecture tests. See
 | API production hardening | 限流、缓存、重试、批量请求优化 | 🟡 Medium |
 | IPC transport tests | `inkpi/ipc.py` serve/request 直接覆盖 | 🟡 Medium |
 | 24h hardware test | 在 meta_pi 上运行 `hardware_24h_test.sh` 验证稳定性 | 🟡 Medium |
+| Privileged helper deployment | 在 meta_pi 上部署并验证 helper 进程 IPC | 🟡 Medium |
+| Cookie session wiring | 将 session auth 接入 server.py 路由中间件 | 🟡 Medium |
+| Admin portal UI polish | 6 个页面已实现，需完善交互体验与响应式设计 | 🟡 Medium |
 
 ### Mid Term
 
 | Item | Description | Priority |
 |------|-------------|----------|
-| NetworkManager integration | 特权执行器，实际调用 nmcli 执行网络操作 | 🟡 Medium |
-| Admin portal UI polish | 当前为基础 HTML，需完善交互体验与响应式设计 | 🟡 Medium |
 | Config migration | schema version 升级时的自动迁移 | 🟢 Low |
 
 ### Long Term
@@ -221,13 +248,13 @@ guard against regressions with architecture tests. See
 
 ## Test Coverage
 
-Currently **101 tests** across 18 test files.
-当前共 **101 个测试**，分布在 18 个测试文件中。
+Currently **182 tests** across 27 test files.
+当前共 **182 个测试**，分布在 27 个测试文件中。
 
 | Test File | Count | Scope |
 |-----------|-------|-------|
 | `test_admin_server.py` | 9 | HTTP routes, auth, CORS, page controls, network operations |
-| `test_admin_network_policy.py` | 7 | Network access policy decisions (offline/ethernet/Wi-Fi/hotspot) |
+| `test_admin_network_policy.py` | 10 | Network access policy decisions (offline/ethernet/Wi-Fi/hotspot) |
 | `test_admin_network_helper.py` | 5 | nmcli command planning (Wi-Fi scan/connect/hotspot/password rotation) |
 | `test_admin_service.py` | 4 | AdminService snapshot composition, page controls, event logging |
 | `test_admin_portal.py` | 3 | Portal structure, network/dashboard operation zones |
@@ -235,6 +262,14 @@ Currently **101 tests** across 18 test files.
 | `test_admin_events.py` | 2 | Event log sanitization and bounded capacity |
 | `test_admin_preview.py` | 2 | Mock preview PNG rendering and unknown page rejection |
 | `test_admin_systemd.py` | 2 | systemd installer and service templates |
+| `test_admin_operations.py` | 3 | Operation queue, mutation tracking |
+| `test_helper_client.py` | 10 | HelperClient socket IPC, serialization, error handling |
+| `test_privileged.py` | 11 | Privileged helper allowlist, secret stdin, command dispatch |
+| `test_admin_service_integration.py` | 14 | AdminService end-to-end wiring, snapshot composition |
+| `test_admin_staged_wifi.py` | 8 | Staged Wi-Fi connect/confirm/fail flow, recovery tracking |
+| `test_hidden_hotspot.py` | 14 | Hidden hotspot, NAT/iptables rules, ip_forward, cleanup |
+| `test_admin_session_auth.py` | 14 | Cookie sessions, CSRF tokens, SessionStore lifecycle |
+| `test_admin_preview_live.py` | 7 | Live preview contract, base64 PNG transport, mock fallback |
 | `test_inkpi_display_engine.py` | 7 | Refresh decisions, partial limits, skip, frame replacement, failure recovery, region repair |
 | `test_inkpi_core_contracts.py` | 5 | Non-blocking control, admin contracts, architecture boundaries, socket independence |
 | `test_inkpi_config_and_dashboard.py` | 4 | Atomic config writes, page enable/disable/idempotent/last-page rejection |
@@ -254,4 +289,4 @@ Currently **101 tests** across 18 test files.
 | codex_usage page | 🟡 Medium | 独立页面未实现，面板渲染无专用测试 |
 | inkpi-ctl CLI | 🟢 Low | `control_main()` 无测试 |
 | Config validation edges | 🟢 Low | 畸形 JSON、未知字段、版本迁移未覆盖 |
-| Admin portal UI | 🟢 Low | HTML 渲染仅有结构测试，无 E2E |
+| Admin portal E2E | 🟢 Low | 6 个页面已实现，无浏览器 E2E 测试 |
