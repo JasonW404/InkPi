@@ -73,11 +73,6 @@ class GitHubApiClient(Protocol):
 
         ...
 
-    def fetch_repo_branches(self, organization: str, repo_name: str) -> list[str]:
-        """Fetch branch names for a repository."""
-
-        ...
-
     def fetch_commit_stats(
         self,
         organization: str,

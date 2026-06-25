@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Literal, Protocol
+from typing import Literal, Protocol
 
 CONTRACT_VERSION = 1
 
@@ -108,14 +108,6 @@ class NetworkStatus:
     connection_type: str = "unknown"
 
 
-@dataclass(frozen=True)
-class PagePreview:
-    """Cached preview frame returned by core for a rendered page."""
-
-    page_id: str
-    png_base64: str | None
-
-
 class ManagementDataProvider(Protocol):
     """Facts dashboard pages may request from management."""
 
@@ -124,19 +116,4 @@ class ManagementDataProvider(Protocol):
     def get_network_status(self) -> NetworkStatus: ...
 
 
-class DashboardControl(Protocol):
-    """Controls exposed by dashboard orchestration to management."""
 
-    def get_pages(self) -> list[PageStatus]: ...
-
-    def set_page_enabled(self, page_id: str, enabled: bool) -> DashboardConfigResult: ...
-
-    def get_status(self) -> DashboardStatus: ...
-
-
-def to_payload(value: Any) -> Any:
-    """Convert dataclass contracts into JSON-compatible payloads."""
-
-    if hasattr(value, "__dataclass_fields__"):
-        return asdict(value)
-    return value

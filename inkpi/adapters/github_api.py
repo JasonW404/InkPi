@@ -214,24 +214,6 @@ class GitHubApiAdapter:
 
         return commits
 
-    def fetch_repo_branches(self, organization: str, repo_name: str) -> list[str]:
-        """Fetch branch names for a repository."""
-
-        branches: list[str] = []
-        page = 1
-        while True:
-            payload = self._get_json(
-                f"https://api.github.com/repos/{organization}/{repo_name}/branches",
-                params={"per_page": 100, "page": page},
-            )
-            if not isinstance(payload, list) or not payload:
-                break
-            for branch in payload:
-                if isinstance(branch, dict) and branch.get("name"):
-                    branches.append(branch["name"])
-            page += 1
-        return branches
-
     def fetch_commit_stats(
         self,
         organization: str,
