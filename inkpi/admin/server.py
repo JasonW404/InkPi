@@ -54,7 +54,10 @@ def build_admin_server(
         auth_policy = policy
         preview_client = core_client
 
-    return ThreadingHTTPServer((host, port), AdminHandler)
+    class ReusableServer(ThreadingHTTPServer):
+        allow_reuse_address = True
+
+    return ReusableServer((host, port), AdminHandler)
 
 
 class _AdminHandler(BaseHTTPRequestHandler):
