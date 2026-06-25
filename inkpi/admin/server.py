@@ -223,7 +223,7 @@ class _AdminHandler(BaseHTTPRequestHandler):
         return
 
     def _validate_mutation_auth(self) -> None:
-        token = self.headers.get("X-InkPi-Admin-Token")
+        token = self.headers.get("X-InkPi-Admin-Token", "").strip() or None
         token = token or extract_bearer_token(self.headers.get("Authorization"))
         self.auth_policy.validate_mutation(
             token=token,
@@ -558,7 +558,7 @@ def _render_shell(snapshot, *, active_route: str, content: str) -> str:
         method: 'POST',
         headers: {{
           'Content-Type': 'application/json',
-          'X-InkPi-Admin-Token': tokenInput.value
+          'X-InkPi-Admin-Token': tokenInput.value.trim()
         }},
         body: JSON.stringify(payload || {{}})
       }});
