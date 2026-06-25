@@ -52,8 +52,8 @@ def _load_font(font_size: int, font_weight: FontWeight = "regular") -> ImageFont
 
 
 @lru_cache(maxsize=16)
-def _load_icon_font(font_size: int) -> ImageFont.ImageFont:
-    font_path = _FONT_DIR.joinpath("SymbolsNerdFontMono-Regular.ttf")
+def _load_emoji_font(font_size: int) -> ImageFont.ImageFont:
+    font_path = _FONT_DIR.joinpath("NotoEmoji-Regular.ttf")
     try:
         return ImageFont.truetype(str(font_path), font_size)
     except OSError:

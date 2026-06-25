@@ -61,7 +61,6 @@ class TestBundledFonts:
         "MapleMono-CN-SemiBold.ttf",
         "MapleMono-CN-Bold.ttf",
         "MapleMono.ttf",
-        "SymbolsNerdFontMono-Regular.ttf",
         "NotoEmoji-Regular.ttf",
     ]
 
@@ -91,11 +90,6 @@ class TestBundledFonts:
                 font = ImageFont.truetype(font_path, size)
                 assert font is not None
 
-    def test_icon_font_loadable(self):
-        font_path = str(self.FONT_DIR.joinpath("SymbolsNerdFontMono-Regular.ttf"))
-        font = ImageFont.truetype(font_path, 20)
-        assert font is not None
-
     def test_emoji_font_loadable(self):
         font_path = str(self.FONT_DIR.joinpath("NotoEmoji-Regular.ttf"))
         font = ImageFont.truetype(font_path, 20)
@@ -106,11 +100,6 @@ class TestFontLoadingFunction:
     def test_load_font_returns_freetype_font(self):
         from inkpi.ui.drawing import _load_font
         font = _load_font(20, "regular")
-        assert isinstance(font, ImageFont.FreeTypeFont)
-
-    def test_load_icon_font_returns_freetype_font(self):
-        from inkpi.ui.drawing import _load_icon_font
-        font = _load_icon_font(20)
         assert isinstance(font, ImageFont.FreeTypeFont)
 
     def test_all_weights_loadable(self):

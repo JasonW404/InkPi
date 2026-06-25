@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from importlib.metadata import version as pkg_version
-from math import cos, pi, sin
 from typing import TYPE_CHECKING
 
 from PIL import Image
@@ -23,7 +22,7 @@ from inkpi.ui.constants import (
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
 )
-from inkpi.ui.drawing import _load_font, draw_line, draw_rect, draw_text, truncate_text
+from inkpi.ui.drawing import _load_emoji_font, _load_font, draw_line, draw_rect, draw_text, truncate_text
 from inkpi.ui.github_panel import GitHubPanel
 
 if TYPE_CHECKING:
@@ -262,58 +261,22 @@ class DashboardRenderer:
         y: int,
         size: int,
     ) -> None:
+        icon_map = {
+            "clear": "☀",
+            "partly_cloudy": "⛅",
+            "fog": "☁",
+            "drizzle": "☂",
+            "rain": "☔",
+            "snow": "❄",
+            "rain_showers": "☔",
+            "snow_showers": "❅",
+            "thunderstorm": "⛈",
+            "thunderstorm_hail": "⚡",
+        }
+        char = icon_map.get(icon_name, "?")
         draw = ImageDraw.Draw(image)
-        if icon_name == "clear":
-            center = (x + size // 2, y + size // 2)
-            radius = max(4, size // 4)
-            draw.ellipse(
-                (
-                    center[0] - radius,
-                    center[1] - radius,
-                    center[0] + radius,
-                    center[1] + radius,
-                ),
-                fill=GRAY_BLACK,
-                outline=GRAY_BLACK,
-            )
-            inner_ray = radius + 2
-            outer_ray = size // 2 - 1
-            for index in range(8):
-                angle = index * pi / 4
-                draw.line(
-                    (
-                        center[0] + int(cos(angle) * inner_ray),
-                        center[1] + int(sin(angle) * inner_ray),
-                        center[0] + int(cos(angle) * outer_ray),
-                        center[1] + int(sin(angle) * outer_ray),
-                    ),
-                    fill=GRAY_BLACK,
-                    width=2,
-                )
-            return
-
-        if icon_name in {"partly_cloudy", "fog"}:
-            cloud_y = y + size // 2
-            draw.ellipse((x + 2, cloud_y - 4, x + 10, cloud_y + 4), outline=GRAY_BLACK, width=2)
-            draw.ellipse((x + 8, cloud_y - 7, x + 17, cloud_y + 4), outline=GRAY_BLACK, width=2)
-            draw.line((x + 3, cloud_y + 4, x + 18, cloud_y + 4), fill=GRAY_BLACK, width=2)
-            return
-
-        if icon_name in {"rain", "rain_showers", "drizzle", "thunderstorm", "thunderstorm_hail"}:
-            self._draw_weather_icon(image, "partly_cloudy", x, y - 2, size)
-            for offset in (5, 10, 15):
-                draw.line((x + offset, y + 15, x + offset - 2, y + 19), fill=GRAY_BLACK, width=1)
-            return
-
-        if icon_name in {"snow", "snow_showers"}:
-            for offset in (5, 10, 15):
-                cx = x + offset
-                cy = y + 15
-                draw.line((cx - 3, cy, cx + 3, cy), fill=GRAY_BLACK, width=1)
-                draw.line((cx, cy - 3, cx, cy + 3), fill=GRAY_BLACK, width=1)
-            return
-
-        draw.rectangle((x + 3, y + 3, x + size - 3, y + size - 3), outline=GRAY_BLACK, width=2)
+        font = _load_emoji_font(size)
+        draw.text((x, y - 2), char, fill=GRAY_BLACK, font=font)
 
     @staticmethod
     def _network_label(network: NetworkInfo) -> str:
