@@ -18,7 +18,6 @@ from inkpi.ui.constants import (
     GRAY_MID,
     GRAY_WHITE,
     MARGIN,
-    TEXT_LINE_HEIGHT,
     TITLE_LINE_HEIGHT,
 )
 from inkpi.ui.drawing import _load_font, draw_rect, draw_text

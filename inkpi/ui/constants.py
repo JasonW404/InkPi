@@ -15,8 +15,6 @@ GRAY_BLACK = 0
 # Layout margins and spacing.
 CANVAS_PADDING = 10
 MARGIN = 10
-PANEL_SPACING = 8
-TEXT_LINE_HEIGHT = 24
 TITLE_LINE_HEIGHT = 30
 
 # Font sizes (must be multiples of 4 for crisp e-ink rendering).
