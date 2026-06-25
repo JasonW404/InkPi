@@ -265,6 +265,15 @@ def test_disable_last_page_rejected(admin_server: _RunningServer) -> None:
     assert payload["result"]["error_code"] == "last_enabled_page"
 
 
+def test_dashboard_refresh_triggers_render(admin_server: _RunningServer) -> None:
+    status, payload = admin_server.post_json("/api/dashboard/refresh")
+
+    assert status == 200
+    assert payload["ok"] is True
+    assert payload["result"]["accepted"] is True
+    assert admin_server.client.refresh_triggered is True
+
+
 # ---------------------------------------------------------------------------
 # (e) System operations
 # ---------------------------------------------------------------------------

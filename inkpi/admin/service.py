@@ -40,6 +40,8 @@ class AdminCoreClient(Protocol):
 
     def set_page_enabled(self, page_id: str, enabled: bool) -> DashboardConfigResult: ...
 
+    def trigger_refresh(self) -> dict: ...
+
 
 @dataclass(frozen=True)
 class AdminSnapshot:
@@ -160,6 +162,15 @@ class AdminService:
                 "accepted": result["accepted"],
                 "error_code": result["error_code"],
             },
+        )
+        return result
+
+    def trigger_display_refresh(self) -> dict:
+        result = self._client.trigger_refresh()
+        self._events.record(
+            source="dashboard",
+            message="Display refresh triggered",
+            details={"accepted": result.get("accepted", False)},
         )
         return result
 

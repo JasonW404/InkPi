@@ -71,6 +71,10 @@ class FakeCoreClient:
         self.page_enabled[page_id] = enabled
         return DashboardConfigResult(True, message=f"{page_id} enabled={enabled}")
 
+    def trigger_refresh(self):
+        self.refresh_triggered = True
+        return {"accepted": True, "message": "Refresh queued"}
+
 
 def test_admin_snapshot_composes_core_status_and_network_policy() -> None:
     payload = AdminService(FakeCoreClient()).status_payload()

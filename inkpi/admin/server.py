@@ -188,6 +188,11 @@ class _AdminHandler(BaseHTTPRequestHandler):
                 self._send_json({"ok": result["accepted"], "result": result}, status=status)
                 return
 
+            if route == "/api/dashboard/refresh":
+                result = self.service_factory().trigger_display_refresh()
+                self._send_json({"ok": True, "result": result})
+                return
+
             if route.startswith("/api/system/restart/"):
                 service_name = route.removeprefix("/api/system/restart/")
                 if service_name not in {"core", "display", "admin"}:
@@ -929,6 +934,9 @@ def _render_dashboard_page(snapshot) -> str:
               <tr><th>Partial Refreshes</th><td>{display.get('partial_refreshes', 0)}</td></tr>
               <tr><th>Skipped</th><td>{display.get('skipped_refreshes', 0)}</td></tr>
             </table>
+            <div class="actions" style="margin-top:10px">
+              <button type="button" data-endpoint="/api/dashboard/refresh">Refresh Display Now</button>
+            </div>
           </section>
         </div>
       </div>
