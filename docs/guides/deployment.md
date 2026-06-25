@@ -203,16 +203,16 @@ Confirm the physical screen shows both pages during the rotation cycle. The Code
 
 ### Admin Portal Check
 
-Confirm the admin portal is reachable on port `8080` at the expected LAN or hotspot address. Mutation routes require the token from `~/.config/inkpi/admin.env`.
+Confirm the admin portal is reachable on port `8081` at the expected LAN or hotspot address. Mutation routes require the token from `~/.config/inkpi/admin.env`.
 
-确认 admin portal 在预期的 LAN 或 hotspot 地址的 `8080` 端口可达。Mutation 路由需要 `~/.config/inkpi/admin.env` 中的 token。
+确认 admin portal 在预期的 LAN 或 hotspot 地址的 `8081` 端口可达。Mutation 路由需要 `~/.config/inkpi/admin.env` 中的 token。
 
 ```bash
 # Test from Pi locally (从 Pi 本地测试)
-curl http://127.0.0.1:8080/api/status
+curl http://127.0.0.1:8081/api/status
 
 # Test from LAN (从 LAN 测试)
-curl http://<pi-ip>:8080/api/status
+curl http://<pi-ip>:8081/api/status
 ```
 
 ## Environment Files
@@ -324,8 +324,8 @@ sudo systemctl disable --now eink-dashboard.service
 systemctl status inkpi-admin.service
 
 # Check port (检查端口)
-ss -tlnp | grep 8080
+ss -tlnp | grep 8081
 
 # Check firewall (检查防火墙)
-sudo iptables -L -n | grep 8080
+sudo iptables -L -n | grep 8081
 ```

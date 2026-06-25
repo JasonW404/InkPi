@@ -139,14 +139,14 @@ uv run inkpi-ctl --socket /tmp/inkpi-core.sock page codex_usage disable
 ```bash
 uv run inkpi-admin \
   --host 127.0.0.1 \
-  --port 8080 \
+  --port 8081 \
   --core-socket /tmp/inkpi-core.sock \
   --admin-token dev-local-token
 ```
 
-Open `http://127.0.0.1:8080/` to see the portal, or hit `http://127.0.0.1:8080/api/status` for a JSON status dump.
+Open `http://127.0.0.1:8081/` to see the portal, or hit `http://127.0.0.1:8081/api/status` for a JSON status dump.
 
-打开 `http://127.0.0.1:8080/` 查看门户，或查询 `http://127.0.0.1:8080/api/status` 获取 JSON 状态。
+打开 `http://127.0.0.1:8081/` 查看门户，或查询 `http://127.0.0.1:8081/api/status` 获取 JSON 状态。
 
 Mutation routes require `X-InkPi-Admin-Token: <token>` or `Authorization: Bearer <token>`. Current network mutation endpoints only return in-memory queue operations and never call NetworkManager.
 
@@ -159,7 +159,7 @@ Dashboard 页面启用/禁用端点是实时的，委托给 core contract：
 ```bash
 curl -X POST \
   -H 'X-InkPi-Admin-Token: dev-local-token' \
-  http://127.0.0.1:8080/api/dashboard/pages/codex_usage/disable
+  http://127.0.0.1:8081/api/dashboard/pages/codex_usage/disable
 ```
 
 On machines without Waveshare hardware, the display adapter runs in simulation mode while keeping refresh policy behavior intact.

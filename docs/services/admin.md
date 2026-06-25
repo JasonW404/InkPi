@@ -27,7 +27,7 @@
 | Hotspot | 设备加入 Pi 热点后访问 |
 | Hidden Hotspot | Pi 有互联网时，隐藏热点用于维护并共享上游网络 |
 
-默认监听 `127.0.0.1:8080`，可通过启动参数修改。
+默认监听 `127.0.0.1:8081`，可通过启动参数修改。
 
 ## Authentication
 
@@ -124,14 +124,14 @@ preview 请求不触发 live 数据采集，不绕过 display 刷新策略。
 ## Run Locally
 
 ```bash
-uv run inkpi-admin --host 127.0.0.1 --port 8080 \
+uv run inkpi-admin --host 127.0.0.1 --port 8081 \
   --core-socket /tmp/inkpi-core.sock --admin-token dev-local-token \
   --helper-socket /tmp/inkpi-helper.sock
 ```
 
 ```bash
 curl -X POST -H 'X-InkPi-Admin-Token: dev-local-token' \
-  http://127.0.0.1:8080/api/dashboard/pages/codex_usage/disable
+  http://127.0.0.1:8081/api/dashboard/pages/codex_usage/disable
 ```
 
 ## See Also

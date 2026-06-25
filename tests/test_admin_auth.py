@@ -15,8 +15,8 @@ def test_admin_auth_rejects_mutations_when_token_is_not_configured() -> None:
 def test_admin_auth_accepts_matching_token_and_same_origin() -> None:
     AdminAuthPolicy("secret").validate_mutation(
         token="secret",
-        origin="http://127.0.0.1:8080",
-        host="127.0.0.1:8080",
+        origin="http://127.0.0.1:8081",
+        host="127.0.0.1:8081",
     )
 
 
@@ -25,7 +25,7 @@ def test_admin_auth_rejects_cross_origin_mutation() -> None:
         AdminAuthPolicy("secret").validate_mutation(
             token="secret",
             origin="http://example.test",
-            host="127.0.0.1:8080",
+            host="127.0.0.1:8081",
         )
 
     assert error.value.status == 403

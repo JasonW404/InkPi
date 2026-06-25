@@ -14,7 +14,7 @@ Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=-__SERVICE_HOME__/.config/inkpi/admin.env
 RuntimeDirectory=inkpi-admin
 RuntimeDirectoryMode=0770
-ExecStart=__UV_BIN__ run inkpi-admin --host 0.0.0.0 --port 8080 --core-socket /run/inkpi-core/core.sock
+ExecStart=__UV_BIN__ run inkpi-admin --host 0.0.0.0 --port 8081 --core-socket /run/inkpi-core/core.sock
 Restart=always
 RestartSec=5
 TimeoutStopSec=30

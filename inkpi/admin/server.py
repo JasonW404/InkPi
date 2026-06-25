@@ -16,7 +16,7 @@ from inkpi.admin.service import AdminService
 from inkpi.client import DEFAULT_CORE_SOCKET, InkPiClient
 
 DEFAULT_ADMIN_HOST = "127.0.0.1"
-DEFAULT_ADMIN_PORT = 8080
+DEFAULT_ADMIN_PORT = 8081
 
 
 def run_admin_service(
