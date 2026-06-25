@@ -179,7 +179,7 @@ guard against regressions with architecture tests. See
 | Sub-task | Description |
 |----------|-------------|
 | Fonts moved into package | `assets/fonts/` migrated to `inkpi/fonts/` |
-| New fonts added | Symbols Nerd Font Mono (icons) + Noto Emoji (emoji) |
+| New fonts added | Noto Emoji (emoji) |
 | Unified loading | Only `_load_font()` in `drawing.py` remains, 5 duplicates removed |
 | System fallback eliminated | All `/usr/share/fonts/` path references deleted |
 | importlib.resources | Path resolution via `files("inkpi").joinpath("fonts")` |

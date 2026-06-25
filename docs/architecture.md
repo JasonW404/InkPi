@@ -273,7 +273,6 @@ All rendering fonts are bundled in `inkpi/fonts/` and loaded via `importlib.reso
 | `MapleMono-CN-SemiBold.ttf` | 18 MB | Body text semibold (正文 semibold) | SIL OFL 1.1 |
 | `MapleMono-CN-Bold.ttf` | 18 MB | Body text bold (正文 bold) | SIL OFL 1.1 |
 | `MapleMono.ttf` | 259 KB | Latin-only fallback (Latin-only 回退) | SIL OFL 1.1 |
-| `SymbolsNerdFontMono-Regular.ttf` | 2.5 MB | Icons for weather/status/developer (图标：天气/状态/开发者) | MIT |
 | `NotoEmoji-Regular.ttf` | ~890 KB | Unicode emoji | SIL OFL 1.1 |
 
 ### Enforcement
@@ -285,7 +284,7 @@ The font policy is enforced by architecture tests:
 - `tests/test_font_architecture.py` (10 tests) scans all source code (`tests/test_font_architecture.py`，10 个测试，扫描所有源码)
 - System paths like `/usr/share/fonts` and `/System/Library/Fonts` are forbidden (禁止出现系统路径)
 - All bundled fonts must exist and be loadable (验证所有 bundled 字体存在且可加载)
-- Font loading goes through `_load_font()` and `_load_icon_font()` in `inkpi/ui/drawing.py` (字体加载统一通过 `drawing.py`)
+- Font loading goes through `_load_font()` and `_load_emoji_font()` in `inkpi/ui/drawing.py` (字体加载统一通过 `drawing.py`)
 
 !!! warning
     New font requirements must bundle the TTF in `inkpi/fonts/` and register it in `drawing.py`. Adding system font fallback paths is not allowed.

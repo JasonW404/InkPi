@@ -53,7 +53,6 @@ System Pressure（CPU/RAM/LOAD）、Network（连接 + IP）。详见 `inkpi/das
 | `MapleMono-CN-SemiBold.ttf` | 半粗体 |
 | `MapleMono-CN-Bold.ttf` | 粗体 |
 | `MapleMono.ttf` | 英文 fallback |
-| `SymbolsNerdFontMono-Regular.ttf` | 图标字体 |
 | `NotoEmoji-Regular.ttf` | Emoji 支持 |
 
 ### Weight System

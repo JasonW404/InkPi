@@ -15,7 +15,7 @@ This guide covers how to develop, test, extend, and deploy InkPi while keeping m
 | `inkpi/management/` | System/network facts and future management foundation (系统/网络 facts 和未来管理基础) |
 | `inkpi/contracts.py` | Versioned DTOs and cross-module protocols (版本化 DTO 和跨模块协议) |
 | `inkpi/ipc.py` | JSON-over-Unix-socket transport layer |
-| `inkpi/fonts/` | Bundled TTF fonts: MapleMono-CN, Symbols Nerd Font Mono, Noto Emoji (打包的 TTF 字体) |
+| `inkpi/fonts/` | Bundled TTF fonts: MapleMono-CN, Noto Emoji (打包的 TTF 字体) |
 | `inkpi/ui/` | Render panels, drawing utilities, font loading (渲染面板、绘图工具、字体加载) |
 | `config/inkpi.example.json` | Non-secret runtime config example (非 secret 运行时配置示例) |
 | `scripts/systemd/` | Service templates and deploy installer (服务模板和部署安装器) |
@@ -186,7 +186,6 @@ All rendering fonts are bundled in `inkpi/fonts/` and loaded via `importlib.reso
 | `MapleMono-CN-SemiBold.ttf` | Semibold (半粗体) |
 | `MapleMono-CN-Bold.ttf` | Bold (粗体) |
 | `MapleMono.ttf` | English fallback |
-| `SymbolsNerdFontMono-Regular.ttf` | Icon font (图标字体) |
 | `NotoEmoji-Regular.ttf` | Emoji |
 
 ### Adding a New Font
