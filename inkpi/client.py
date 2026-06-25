@@ -55,6 +55,9 @@ class InkPiClient:
     def get_core_status(self) -> dict:
         return request(self._socket_path, "get_core_status")
 
+    def trigger_refresh(self) -> dict:
+        return request(self._socket_path, "render_now")
+
     def get_page_preview(self, page_id: str) -> bytes | None:
         """Return cached PNG preview bytes for *page_id*, or ``None``."""
         try:

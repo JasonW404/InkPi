@@ -183,6 +183,9 @@ class DataScheduler:
                 codex=self._cached.codex,
             )
 
+    def trigger_refresh(self) -> None:
+        self._update_event.set()
+
     def wait_for_update(self, timeout: float | None = None) -> bool:
         """Wait for next update event.
 

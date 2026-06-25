@@ -85,6 +85,9 @@ class InkPiCore:
                 "last_error": self._last_error,
                 "last_display_result": self._last_display_result,
             }
+        if action == "render_now":
+            self._scheduler.trigger_refresh()
+            return {"accepted": True, "message": "Refresh queued"}
         if action == "get_page_preview":
             page_id = str(payload["page_id"])
             png_bytes = self.get_page_preview(page_id)
