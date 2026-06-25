@@ -106,7 +106,7 @@ class CodexPanel:
             draw_text(
                 image,
                 (col_x, bar_y + bar_height + 4),
-                f"RESET {countdown:>8}",
+                f"RESET IN {countdown:>8}",
                 fill=GRAY_MID,
                 font_size=FONT_SIZE_SMALL,
             )

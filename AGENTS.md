@@ -6,7 +6,7 @@ All contributors and coding agents working in this repository must follow
 ## Current Status
 
 - Project name: **InkPi**
-- Version: `0.2.0`
+- Version: `0.2.1`
 - Target: Raspberry Pi 4B with Waveshare 4.26-inch `800x480` e-ink HAT
 - Architecture: hybrid multi-process runtime
 - Main services: `inkpi-core`, `inkpi-display`, and `inkpi-admin`

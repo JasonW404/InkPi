@@ -41,7 +41,8 @@ class SidebarPanel:
     ) -> Image.Image:
         image = Image.new("L", (self._width, self._height), GRAY_WHITE)
 
-        y = MARGIN
+        x = MARGIN + 4
+        y = MARGIN + 20
 
         temp_size = FONT_SIZE_TITLE
         if weather.temperature_celsius is not None:
@@ -49,14 +50,14 @@ class SidebarPanel:
             icon_str = self._weather_icon(weather.icon)
             icon_font = _load_icon_font(temp_size)
             draw = ImageDraw.Draw(image)
-            draw.text((MARGIN, y), icon_str, fill=GRAY_BLACK, font=icon_font)
+            draw.text((x, y), icon_str, fill=GRAY_BLACK, font=icon_font)
             icon_width = draw.textbbox((0, 0), icon_str, font=icon_font)[2]
             
-            draw_text(image, (MARGIN + icon_width + 8, y), temp_str, fill=GRAY_BLACK, font_size=temp_size)
+            draw_text(image, (int(x + icon_width + 8), y), temp_str, fill=GRAY_BLACK, font_size=temp_size)
         else:
             draw_text(
                 image,
-                (MARGIN, y),
+                (x, y),
                 truncate_text(weather.summary, 18),
                 fill=GRAY_BLACK,
                 font_size=FONT_SIZE_NORMAL,
@@ -64,11 +65,11 @@ class SidebarPanel:
         y += TITLE_LINE_HEIGHT + 4
 
         date_line = date_time.now.strftime("%a %b %d").upper()
-        draw_text(image, (MARGIN, y), date_line, fill=GRAY_BLACK, font_size=FONT_SIZE_NORMAL, font_weight="semibold")
+        draw_text(image, (x, y), date_line, fill=GRAY_BLACK, font_size=FONT_SIZE_NORMAL, font_weight="semibold")
         y += TEXT_LINE_HEIGHT
 
         year_str = date_time.now.strftime("%Y")
-        draw_text(image, (MARGIN, y), year_str, fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
+        draw_text(image, (x, y), year_str, fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
         y += TEXT_LINE_HEIGHT + 20
 
         detail_size = FONT_SIZE_SMALL
@@ -77,7 +78,7 @@ class SidebarPanel:
         detail_font = _load_font(detail_size)
         value_font = _load_font(value_size)
 
-        self._draw_bold_text(image, (MARGIN, y), "CPU", fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
+        self._draw_bold_text(image, (x, y), "CPU", fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
         y += TEXT_LINE_HEIGHT - 2
 
         cpu_x = MARGIN
@@ -193,7 +194,7 @@ class SidebarPanel:
         global_text = f"Global {system.global_load_percent:.0f}%"
         draw_text(image, (MARGIN, y), global_text, fill=GRAY_MID, font_size=FONT_SIZE_SMALL)
 
-        y += TEXT_LINE_HEIGHT + 8
+        y += TEXT_LINE_HEIGHT + 4
 
         if network.connection_type == "wifi":
             ssid = network.ssid or ""
