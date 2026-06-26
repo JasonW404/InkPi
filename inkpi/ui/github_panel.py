@@ -20,7 +20,7 @@ from inkpi.ui.constants import (
     MARGIN,
     TITLE_LINE_HEIGHT,
 )
-from inkpi.ui.drawing import _load_font, draw_rect, draw_text
+from inkpi.ui.drawing import _load_font, draw_patterned_rect, draw_rect, draw_text
 
 if TYPE_CHECKING:
     from inkpi.domain.models import GitHubMonthlyStats
@@ -237,30 +237,27 @@ class GitHubPanel:
             if not in_month:
                 continue
             commit_count = contrib_map.get(current_date, 0)
-            fill = self._resolve_contribution_fill(commit_count)
+            density = self._resolve_contribution_density(commit_count)
             cell_x = calendar_x + col * (cell_size + cell_spacing)
             cell_y = grid_y + row * (cell_size + row_spacing)
+            cell_box = (cell_x, cell_y, cell_x + cell_size, cell_y + cell_size)
 
             if current_date == today:
                 self._draw_today_star(image, cell_x, cell_y, cell_size)
+            elif density is None:
+                draw_rect(image, cell_box, fill=GRAY_WHITE, outline=GRAY_MID, width=1)
             else:
-                draw_rect(
-                    image,
-                    (cell_x, cell_y, cell_x + cell_size, cell_y + cell_size),
-                    fill=fill,
-                    outline=GRAY_MID,
-                    width=1,
-                )
+                draw_patterned_rect(image, cell_box, density=density, outline=GRAY_MID, outline_width=1)
 
     @staticmethod
-    def _resolve_contribution_fill(commit_count: int) -> int:
+    def _resolve_contribution_density(commit_count: int) -> str | None:
         if commit_count == 0:
-            return GRAY_WHITE
+            return None
         if commit_count <= 2:
-            return 140
+            return "low"
         if commit_count <= 5:
-            return GRAY_MID
-        return GRAY_BLACK
+            return "medium"
+        return "high"
 
     @staticmethod
     def _draw_today_star(image: Image.Image, x: int, y: int, size: int) -> None:

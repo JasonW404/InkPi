@@ -121,6 +121,50 @@ def draw_line(
     draw.line(xy, fill=fill, width=width)
 
 
+PATTERN_SPACING: dict[str, int] = {
+    "low": 5,
+    "medium": 3,
+    "high": 2,
+}
+
+
+def draw_patterned_rect(
+    image: Image.Image,
+    box: tuple[int, int, int, int],
+    density: str,
+    pattern_color: int = GRAY_BLACK,
+    outline: int | None = None,
+    outline_width: int = 1,
+) -> None:
+    """Draw a white rectangle filled with equally-spaced horizontal lines.
+
+    Uses line density instead of gray level to differentiate contribution
+    intensity, which is stable under partial e-ink refresh.
+
+    Args:
+        image: Target PIL image.
+        box: Bounding box as (x0, y0, x1, y1).
+        density: One of "low", "medium", or "high".
+        pattern_color: Grayscale value for the lines (default black).
+        outline: Optional outline color drawn around the rectangle.
+        outline_width: Width of the outline in pixels.
+    """
+    x0, y0, x1, y1 = box
+    spacing = PATTERN_SPACING.get(density)
+    if spacing is None:
+        raise ValueError(f"Unknown pattern density: {density!r}")
+
+    draw = ImageDraw.Draw(image)
+
+    y = y0
+    while y < y1:
+        draw.line([(x0, y), (x1 - 1, y)], fill=pattern_color, width=1)
+        y += spacing
+
+    if outline is not None:
+        draw.rectangle(box, outline=outline, width=outline_width)
+
+
 def truncate_text(text: str, max_chars: int) -> str:
     """Truncate text to max length with ellipsis.
 
